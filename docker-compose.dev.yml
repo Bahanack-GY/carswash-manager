@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DB_HOST=host.docker.internal
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=lis_car_wash
+      - JWT_SECRET=lis-car-wash-jwt-secret-change-in-production
+      - JWT_EXPIRES_IN=1d
+      - JWT_REFRESH_SECRET=lis-car-wash-refresh-secret-change-in-production
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=qwen2.5:7b
+      - AI_DB_USER=ai_chatbot_user
+      - AI_DB_PASSWORD=ai_chatbot_password
+    volumes:
+      - ./server/src:/app/src
+      - ./server/uploads:/app/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  ui:
+    build:
+      context: ./UI
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:3001/api
+    volumes:
+      - ./UI/src:/app/src
+      - ./UI/public:/app/public
+    depends_on:
+      - server
+
+volumes: {}

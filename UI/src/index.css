@@ -1,0 +1,220 @@
+@import "tailwindcss";
+
+/* ── Class-based dark mode ───────────────────────── */
+@variant dark (&:where(.dark, .dark *));
+
+/* ── Semantic design tokens ──────────────────────── */
+@theme {
+  /* Surfaces */
+  --color-surface: var(--c-surface);
+  --color-panel: var(--c-panel);
+  --color-inset: var(--c-inset);
+  --color-raised: var(--c-raised);
+  --color-dim: var(--c-dim);
+
+  /* Borders */
+  --color-edge: var(--c-edge);
+  --color-divider: var(--c-divider);
+  --color-outline: var(--c-outline);
+
+  /* Text */
+  --color-ink: var(--c-ink);
+  --color-ink-light: var(--c-ink-light);
+  --color-ink-faded: var(--c-ink-faded);
+  --color-ink-muted: var(--c-ink-muted);
+  --color-ink-ghost: var(--c-ink-ghost);
+
+  /* Accent (Teal) */
+  --color-accent: var(--c-accent);
+  --color-accent-bold: var(--c-accent-bold);
+  --color-accent-wash: var(--c-accent-wash);
+  --color-accent-line: var(--c-accent-line);
+  --color-accent-ring: var(--c-accent-ring);
+
+  /* Status */
+  --color-ok: var(--c-ok);
+  --color-ok-wash: var(--c-ok-wash);
+  --color-ok-line: var(--c-ok-line);
+  --color-warn: var(--c-warn);
+  --color-warn-wash: var(--c-warn-wash);
+  --color-warn-line: var(--c-warn-line);
+  --color-bad: var(--c-bad);
+  --color-bad-wash: var(--c-bad-wash);
+  --color-bad-line: var(--c-bad-line);
+  --color-info: var(--c-info);
+  --color-info-wash: var(--c-info-wash);
+  --color-info-line: var(--c-info-line);
+  --color-grape: var(--c-grape);
+  --color-grape-wash: var(--c-grape-wash);
+  --color-grape-line: var(--c-grape-line);
+
+  /* Brand palette — direct access */
+  --color-navy: #283852;
+  --color-navy-light: #34496a;
+  --color-navy-dark: #1e2c3e;
+  --color-teal: #33cbcc;
+  --color-teal-light: #5dd8d8;
+  --color-teal-dark: #1a9a9b;
+  --color-teal-wash: #e3f6f6;
+
+  /* Legacy aliases kept for chart/recharts compatibility */
+  --color-navy-800: #1e2c3e;
+  --color-navy-700: #243348;
+  --color-navy-600: #283852;
+  --color-navy-500: #34496a;
+  --color-teal-700: #1a9a9b;
+  --color-teal-600: #27b8b8;
+  --color-teal-500: #33cbcc;
+  --color-teal-400: #5dd8d8;
+
+  /* Fonts */
+  --font-heading: "Poppins", system-ui, -apple-system, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Light (default) ─────────────────────────────── */
+:root {
+  --c-surface: #f0fafa;
+  --c-panel:   #ffffff;
+  --c-inset:   #f5fbfb;
+  --c-raised:  #e8f5f5;
+  --c-dim:     #d4eded;
+
+  --c-edge:    #c6e4e4;
+  --c-divider: #daf0f0;
+  --c-outline: #a8d4d4;
+
+  --c-ink:        #1e2d3d;
+  --c-ink-light:  #283852;
+  --c-ink-faded:  #4a6070;
+  --c-ink-muted:  #7a9aaa;
+  --c-ink-ghost:  #b8d4d8;
+
+  --c-accent:      #33cbcc;
+  --c-accent-bold: #1a9a9b;
+  --c-accent-wash: #e3f6f6;
+  --c-accent-line: #88e4e5;
+  --c-accent-ring: #5dd8d9;
+
+  --c-ok:      #0f7a4a;
+  --c-ok-wash: #e8f9f2;
+  --c-ok-line: #8ed8bc;
+
+  --c-warn:      #a06000;
+  --c-warn-wash: #fef8e8;
+  --c-warn-line: #ecc878;
+
+  --c-bad:      #cc2030;
+  --c-bad-wash: #fdeef0;
+  --c-bad-line: #f4b0b8;
+
+  --c-info:      #1848cc;
+  --c-info-wash: #ecf2ff;
+  --c-info-line: #a8c0f8;
+
+  --c-grape:      #7020b8;
+  --c-grape-wash: #f5ecff;
+  --c-grape-line: #d8b8f0;
+}
+
+/* ── Dark ────────────────────────────────────────── */
+.dark {
+  --c-surface: #0d1a26;
+  --c-panel:   #142230;
+  --c-inset:   #1a2c3e;
+  --c-raised:  #203448;
+  --c-dim:     #283852;
+
+  --c-edge:    #2a4060;
+  --c-divider: #1e3050;
+  --c-outline: #304858;
+
+  --c-ink:        #dff0f8;
+  --c-ink-light:  #a8c8e0;
+  --c-ink-faded:  #72a0b8;
+  --c-ink-muted:  #446880;
+  --c-ink-ghost:  #284860;
+
+  --c-accent:      #33cbcc;
+  --c-accent-bold: #5dd8d8;
+  --c-accent-wash: #0a2e38;
+  --c-accent-line: #104040;
+  --c-accent-ring: #185050;
+
+  --c-ok:      #34d399;
+  --c-ok-wash: #0a201a;
+  --c-ok-line: #103428;
+
+  --c-warn:      #fbbf24;
+  --c-warn-wash: #1c1808;
+  --c-warn-line: #28240e;
+
+  --c-bad:      #f87171;
+  --c-bad-wash: #201012;
+  --c-bad-line: #2c1418;
+
+  --c-info:      #60a5fa;
+  --c-info-wash: #0c1a2e;
+  --c-info-line: #14263a;
+
+  --c-grape:      #c084fc;
+  --c-grape-wash: #180e28;
+  --c-grape-line: #24163a;
+}
+
+/* ── Base ─────────────────────────────────────────── */
+body {
+  font-family: var(--font-body);
+  background-color: var(--c-surface);
+  color: var(--c-ink);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+/* ── Scrollbar ────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-dim); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-accent-ring); }
+
+/* ── Sidebar scrollbar ────────────────────────────── */
+.sidebar-scroll::-webkit-scrollbar { width: 3px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(51,203,204,0.2); border-radius: 4px; }
+
+/* ── Focus ring ───────────────────────────────────── */
+*:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; border-radius: 6px; }
+
+/* ── Checkbox ─────────────────────────────────────── */
+input[type="checkbox"] { accent-color: var(--c-accent); }
+
+/* ── Recharts tooltip ─────────────────────────────── */
+.recharts-default-tooltip {
+  background: var(--c-panel) !important;
+  border: 1px solid var(--c-edge) !important;
+  border-radius: 12px !important;
+  color: var(--c-ink) !important;
+  box-shadow: 0 4px 20px rgba(40,56,82,0.1) !important;
+}
+
+/* ── No scrollbar ─────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Print (coupon) ───────────────────────────────── */
+@media print {
+  body { background: white !important; color: black !important; }
+  body * { visibility: hidden !important; }
+  #coupon-print, #coupon-print * { visibility: visible !important; }
+  #coupon-print {
+    position: fixed !important; left: 0 !important; top: 0 !important;
+    width: 100% !important; max-width: 80mm; margin: 0 auto;
+    padding: 16px !important; background: white !important;
+    color: black !important; border-radius: 0 !important; box-shadow: none !important;
+  }
+}

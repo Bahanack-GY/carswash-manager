@@ -1,0 +1,215 @@
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
+import Layout from '@/components/Layout'
+import ProtectedRoute from '@/components/ProtectedRoute'
+import Login from '@/pages/Login'
+import Dashboard from '@/pages/Dashboard'
+import Reservations from '@/pages/Reservations'
+import FichesPiste from '@/pages/FichesPiste'
+import Coupons from '@/pages/Coupons'
+import CouponDetail from '@/pages/CouponDetail'
+import Caisse from '@/pages/Caisse'
+import Clients from '@/pages/Clients'
+import ClientDetail from '@/pages/ClientDetail'
+import Inventaire from '@/pages/Inventaire'
+import InventaireDetail from '@/pages/InventaireDetail'
+import Employes from '@/pages/Employes'
+import EmployeDetail from '@/pages/EmployeDetail'
+import Stations from '@/pages/Stations'
+import TypesLavage from '@/pages/TypesLavage'
+import ServicesSpeciaux from '@/pages/ServicesSpeciaux'
+import Incidents from '@/pages/Incidents'
+import NouveauLavage from '@/pages/NouveauLavage'
+import SelectStation from '@/pages/SelectStation'
+import GlobalDashboard from '@/pages/GlobalDashboard'
+import MonEspace from '@/pages/MonEspace'
+import Commercial from '@/pages/Commercial'
+import CommercialAnalytics from '@/pages/CommercialAnalytics'
+import Marketing from '@/pages/Marketing'
+import AuditLogs from '@/pages/AuditLogs'
+import BonsLavage from '@/pages/BonsLavage'
+import Depenses from '@/pages/Depenses'
+import AdminLayout from '@/components/AdminLayout'
+import AdminEmployees from '@/pages/admin/AdminEmployees'
+import AdminClients from '@/pages/admin/AdminClients'
+import AdminIncidents from '@/pages/admin/AdminIncidents'
+import Classement from '@/pages/Classement'
+import Unauthorized from '@/pages/Unauthorized'
+
+export default function App() {
+  return (
+    <>
+      <Toaster position="top-right" toastOptions={{ className: 'text-sm font-medium' }} />
+      <Routes>
+        {/* Public */}
+        <Route path="/" element={<Login />} />
+        <Route path="/select-station" element={<SelectStation />} />
+        <Route path="/global-dashboard" element={<AdminLayout />}>
+          <Route index element={<GlobalDashboard />} />
+          <Route path="employees" element={<AdminEmployees />} />
+          <Route path="clients" element={<AdminClients />} />
+          <Route path="incidents" element={<AdminIncidents />} />
+          <Route path="stations" element={<Stations />} />
+          <Route path="audit" element={<AuditLogs />} />
+        </Route>
+
+        {/* Protected — inside Layout */}
+        <Route element={<Layout />}>
+          <Route path="/unauthorized" element={<Unauthorized />} />
+
+          <Route path="/dashboard" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'comptable']}>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/nouveau-lavage" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'controleur']}>
+              <NouveauLavage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/reservations" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'controleur', 'caissiere']}>
+              <Reservations />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/fiches-piste" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'controleur']}>
+              <FichesPiste />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/coupons" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'controleur', 'caissiere', 'comptable']}>
+              <Coupons />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/coupons/:id" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'controleur', 'caissiere', 'comptable']}>
+              <CouponDetail />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/caisse" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'caissiere', 'comptable']}>
+              <Caisse />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/depenses" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'caissiere', 'comptable']}>
+              <Depenses />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/clients" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'controleur', 'caissiere']}>
+              <Clients />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/clients/:id" element={
+            <ProtectedRoute roles={['super_admin', 'manager', 'controleur', 'caissiere']}>
+              <ClientDetail />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/inventaire" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <Inventaire />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/inventaire/:id" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <InventaireDetail />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/employes" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <Employes />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/employes/:id" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <EmployeDetail />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/stations" element={
+            <ProtectedRoute roles={['super_admin']}>
+              <Stations />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/types-lavage" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <TypesLavage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/services-speciaux" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <ServicesSpeciaux />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/incidents" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <Incidents />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/mon-espace" element={
+            <ProtectedRoute roles={['laveur']}>
+              <MonEspace />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/classement" element={
+            <ProtectedRoute roles={['laveur', 'commercial', 'controleur', 'super_admin', 'manager']}>
+              <Classement />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/espace-commercial" element={
+            <ProtectedRoute roles={['commercial']}>
+              <Commercial />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/commercial-analytics" element={
+            <ProtectedRoute roles={['commercial']}>
+              <CommercialAnalytics />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/marketing" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <Marketing />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/bons-lavage" element={
+            <ProtectedRoute roles={['super_admin', 'manager']}>
+              <BonsLavage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/audit-logs" element={
+            <ProtectedRoute roles={['super_admin']}>
+              <AuditLogs />
+            </ProtectedRoute>
+          } />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
+  )
+}

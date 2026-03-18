@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/etc/nginx/certs
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    restart: always
+
+  acme-companion:
+    image: nginxproxy/acme-companion
+    environment:
+      - DEFAULT_EMAIL=admin@domainname.com
+    volumes:
+      - certs:/etc/nginx/certs
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - acme:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - nginx-proxy
+    restart: always
+
+  database:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lis_car_wash
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lis_car_wash"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    expose:
+      - "11434"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 6G
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    environment:
+      - PORT=3001
+      - DB_HOST=database
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=lis_car_wash
+      - JWT_SECRET=lis-car-wash-jwt-secret-change-in-production
+      - JWT_EXPIRES_IN=1d
+      - JWT_REFRESH_SECRET=lis-car-wash-refresh-secret-change-in-production
+      - JWT_REFRESH_EXPIRES_IN=7d
+      # AI Chatbot
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen2.5:7b
+      - AI_DB_USER=ai_chatbot_user
+      - AI_DB_PASSWORD=ai_chatbot_password
+      # Variables for nginx-proxy auto SSL
+      - VIRTUAL_HOST=${API_DOMAIN:-api.domainname.com}
+      - LETSENCRYPT_HOST=${API_DOMAIN:-api.domainname.com}
+    expose:
+      - "3001"
+    depends_on:
+      database:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+
+  ui:
+    build:
+      context: ./UI
+      dockerfile: Dockerfile
+      args:
+        # This MUST be the HTTPS address!
+        - VITE_API_URL=${VITE_API_URL:-https://api.domainname.com/api}
+    environment:
+      - VIRTUAL_HOST=${UI_DOMAIN:-domainname.com}
+      - LETSENCRYPT_HOST=${UI_DOMAIN:-domainname.com}
+    expose:
+      - "80"
+    depends_on:
+      - server
+
+volumes:
+  postgres_data:
+  ollama_data:
+  certs:
+  vhost:
+  html:
+  acme:
