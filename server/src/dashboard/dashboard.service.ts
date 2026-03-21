@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, fn, col } from 'sequelize';
 import { Paiement } from '../billing/models/paiement.model.js';
@@ -275,6 +275,11 @@ export class DashboardService {
     const today = this.getToday();
 
     if (startDate && endDate) {
+      if (startDate > endDate) {
+        throw new BadRequestException(
+          `La date de début (${startDate}) ne peut pas être postérieure à la date de fin (${endDate})`,
+        );
+      }
       const startParts = startDate.split('-').map(Number);
       const endParts = endDate.split('-').map(Number);
       const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);

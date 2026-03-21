@@ -7,12 +7,14 @@ import { BillingService } from './billing.service';
 import { Facture } from './models/facture.model';
 import { Paiement } from './models/paiement.model';
 import { LigneVente } from './models/ligne-vente.model';
+import { Coupon } from '../wash-operations/models/coupon.model';
 
 describe('BillingService', () => {
     let service: BillingService;
     let factureModel: any;
     let paiementModel: any;
     let ligneVenteModel: any;
+    let couponModel: any;
     let sequelize: any;
 
     const mockTxn = { commit: jest.fn(), rollback: jest.fn() };
@@ -76,6 +78,12 @@ describe('BillingService', () => {
                         bulkCreate: jest.fn(),
                     },
                 },
+                {
+                    provide: getModelToken(Coupon),
+                    useValue: {
+                        findByPk: jest.fn(),
+                    },
+                },
             ],
         }).compile();
 
@@ -83,6 +91,7 @@ describe('BillingService', () => {
         factureModel = module.get(getModelToken(Facture));
         paiementModel = module.get(getModelToken(Paiement));
         ligneVenteModel = module.get(getModelToken(LigneVente));
+        couponModel = module.get(getModelToken(Coupon));
         sequelize = module.get(Sequelize);
     });
 
@@ -137,6 +146,7 @@ describe('BillingService', () => {
     // ─── createFacture ────────────────────────────────────────────────
     describe('createFacture', () => {
         it('should create a facture with auto-generated numero', async () => {
+            couponModel.findByPk.mockResolvedValue({ id: 1, numero: 'CPN-0001', statut: 'done' });
             factureModel.findOne.mockResolvedValue(null); // no previous
             factureModel.create.mockResolvedValue({ id: 1, numero: 'FAC-0001' });
             factureModel.findByPk.mockResolvedValue(mockFacture);

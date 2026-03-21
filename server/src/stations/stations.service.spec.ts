@@ -29,6 +29,7 @@ describe('StationsService', () => {
                     useValue: {
                         findAll: jest.fn(),
                         findByPk: jest.fn(),
+                        findOne: jest.fn(),
                         create: jest.fn(),
                     },
                 },
@@ -103,6 +104,7 @@ describe('StationsService', () => {
     describe('create', () => {
         it('should create a new station', async () => {
             const dto = { nom: 'New Station', adresse: '456 Blvd', town: 'Yaounde', contact: '+237611111111' };
+            stationModel.findOne.mockResolvedValue(null); // no duplicate
             stationModel.create.mockResolvedValue({ id: 2, ...dto });
 
             const result = await service.create(dto as any);

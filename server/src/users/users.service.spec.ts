@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ConflictException } from '@nestjs/common';
+import { NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/sequelize';
 import { UsersService } from './users.service';
 import { User } from './models/user.model';
@@ -320,6 +320,22 @@ describe('UsersService', () => {
 
             expect(mockUser.update).toHaveBeenCalled();
             expect(promotionModel.create).toHaveBeenCalled();
+        });
+
+        it('should throw ForbiddenException if Manager tries to promote to SuperAdmin', async () => {
+            userModel.findByPk.mockResolvedValue({ ...mockUser, role: Role.Manager });
+
+            await expect(
+                service.promoteUser(1, { nouveauRole: Role.SuperAdmin, motif: 'Test' } as any, 99),
+            ).rejects.toThrow(ForbiddenException);
+        });
+
+        it('should throw ForbiddenException if Manager tries to promote to Manager', async () => {
+            userModel.findByPk.mockResolvedValue({ ...mockUser, role: Role.Manager });
+
+            await expect(
+                service.promoteUser(1, { nouveauRole: Role.Manager, motif: 'Test' } as any, 99),
+            ).rejects.toThrow(ForbiddenException);
         });
     });
 

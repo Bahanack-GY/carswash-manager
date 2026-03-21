@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { fn, col, literal } from 'sequelize';
 import { Station } from './models/station.model.js';
@@ -61,6 +61,10 @@ export class StationsService {
   }
 
   async create(createStationDto: CreateStationDto) {
+    const existing = await this.stationModel.findOne({ where: { nom: createStationDto.nom } });
+    if (existing) {
+      throw new ConflictException(`Une station avec le nom "${createStationDto.nom}" existe déjà`);
+    }
     const station = await this.stationModel.create(createStationDto as any);
     await this.defaultServicesService.seedGlobalDefaults();
     return station;

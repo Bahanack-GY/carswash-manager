@@ -39,39 +39,50 @@ export class CommercialService {
 
   async registerVehicle(commercialId: number, stationId: number, dto: RegisterVehicleDto) {
     const plate = dto.immatriculation.trim();
-
-    // Case-insensitive check for existing pending registration
-    const existing = await this.registrationModel.findOne({
-      where: {
-        immatriculation: { [Op.iLike]: plate },
-        confirmed: false,
-      },
-    });
-    if (existing) {
-      throw new ConflictException(
-        `Le véhicule ${plate} a déjà un enregistrement en attente de confirmation`,
-      );
-    }
-
     const today = new Date().toISOString().slice(0, 10);
+    // Only block duplicates registered within the last 7 days to avoid stale pending records accumulating
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
 
-    const registration = await this.registrationModel.create({
-      commercialId,
-      immatriculation: plate.toUpperCase(),
-      prospectNom: dto.prospectNom.trim(),
-      prospectTelephone: dto.prospectTelephone.trim(),
-      prospectEmail: dto.prospectEmail?.trim() || null,
-      prospectQuartier: dto.prospectQuartier?.trim() || null,
-      vehicleBrand: dto.vehicleBrand?.trim() || null,
-      vehicleModele: dto.vehicleModele?.trim() || null,
-      vehicleColor: dto.vehicleColor?.trim() || null,
-      vehicleType: dto.vehicleType?.trim() || null,
-      stationId,
-      date: today,
-      confirmed: false,
-    } as any);
+    return this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
+      async (t) => {
+        // Lock matching rows so concurrent registrations for the same plate are serialized
+        const existing = await this.registrationModel.findOne({
+          where: {
+            immatriculation: { [Op.iLike]: plate },
+            confirmed: false,
+            date: { [Op.gte]: sevenDaysAgoStr },
+          },
+          lock: Transaction.LOCK.UPDATE,
+          transaction: t,
+        });
+        if (existing) {
+          throw new ConflictException(
+            `Le véhicule ${plate} a déjà un enregistrement en attente de confirmation`,
+          );
+        }
 
-    return this.registrationModel.findByPk(registration.id);
+        const registration = await this.registrationModel.create({
+          commercialId,
+          immatriculation: plate.toUpperCase(),
+          prospectNom: dto.prospectNom.trim(),
+          prospectTelephone: dto.prospectTelephone.trim(),
+          prospectEmail: dto.prospectEmail?.trim() || null,
+          prospectQuartier: dto.prospectQuartier?.trim() || null,
+          vehicleBrand: dto.vehicleBrand?.trim() || null,
+          vehicleModele: dto.vehicleModele?.trim() || null,
+          vehicleColor: dto.vehicleColor?.trim() || null,
+          vehicleType: dto.vehicleType?.trim() || null,
+          stationId,
+          date: today,
+          confirmed: false,
+        } as any, { transaction: t });
+
+        return registration;
+      },
+    );
   }
 
   async getTodayRegistrations(commercialId: number, stationId: number) {

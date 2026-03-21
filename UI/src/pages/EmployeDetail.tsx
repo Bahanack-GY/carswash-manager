@@ -19,6 +19,7 @@ import { useCaisseTransactions } from '@/api/caisse'
 import { useFichesPiste } from '@/api/fiches-piste'
 import { useCommercialStatsByUser, useTransferPortfolio } from '@/api/commercial/queries'
 import { useUsers } from '@/api/users'
+import { useAuth } from '@/contexts/AuthContext'
 import type { Affectation, Sanction, SanctionType, Promotion } from '@/api/users/types'
 import type { Paiement } from '@/api/paiements/types'
 import type { FichePiste } from '@/api/fiches-piste/types'
@@ -106,6 +107,7 @@ export default function EmployeDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const userId = Number(id) || 0
+  const { user: currentUser } = useAuth()
 
   const { data: user, isLoading, isError } = useUser(userId)
   const { data: stationsList } = useStations()
@@ -177,6 +179,9 @@ export default function EmployeDetail() {
   const [liftTargetId, setLiftTargetId] = useState<number | null>(null)
   const [liftNote, setLiftNote] = useState('')
 
+  // Caissière transaction pagination
+  const [caisseTxPage, setCaisseTxPage] = useState(1)
+
   // Promotion state
   const promoteUser = usePromoteUser()
   const [showPromoteModal, setShowPromoteModal] = useState(false)
@@ -225,7 +230,7 @@ export default function EmployeDetail() {
   /* ── Caissière computed stats ──────────────────── */
   const caisseTransactions: Paiement[] = caisseData?.data || []
   const totalEncaisse = useMemo(() =>
-    caisseTransactions.filter(t => t.type === 'income').reduce((s, t) => s + t.montant, 0), [caisseTransactions])
+    caisseTransactions.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.montant), 0), [caisseTransactions])
   const incomeTxCount = useMemo(() =>
     caisseTransactions.filter(t => t.type === 'income').length, [caisseTransactions])
   const totalCaisseTx = caisseTransactions.length
@@ -238,7 +243,7 @@ export default function EmployeDetail() {
     caisseTransactions.filter(t => t.type === 'income').forEach(t => {
       const d = new Date(t.createdAt)
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      map.set(key, (map.get(key) || 0) + t.montant)
+      map.set(key, (map.get(key) || 0) + Number(t.montant))
     })
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
@@ -582,7 +587,7 @@ export default function EmployeDetail() {
           {periodTabs.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setPeriod(tab.key)}
+              onClick={() => { setPeriod(tab.key); setCaisseTxPage(1) }}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 period === tab.key
                   ? 'bg-accent-wash text-accent'
@@ -1276,7 +1281,7 @@ export default function EmployeDetail() {
                     </tr>
                   </thead>
                   <tbody>
-                    {caisseTransactions.slice(0, 50).map((t, i) => {
+                    {caisseTransactions.slice((caisseTxPage - 1) * 10, caisseTxPage * 10).map((t, i) => {
                       const methodeLabels: Record<string, string> = {
                         cash: 'Espèces', card: 'Carte', wave: 'Wave', orange_money: 'Orange Money', transfer: 'Virement',
                       }
@@ -1302,7 +1307,7 @@ export default function EmployeDetail() {
                             </span>
                           </td>
                           <td className={`px-6 py-3 text-right font-semibold whitespace-nowrap ${t.type === 'income' ? 'text-ok' : 'text-red-500'}`}>
-                            {t.type === 'income' ? '+' : '-'}{t.montant.toLocaleString()} FCFA
+                            {t.type === 'income' ? '+' : '-'}{Number(t.montant).toLocaleString()} FCFA
                           </td>
                         </tr>
                       )
@@ -1310,9 +1315,28 @@ export default function EmployeDetail() {
                   </tbody>
                 </table>
               </div>
-              {caisseTransactions.length > 50 && (
-                <div className="px-6 py-3 text-center text-xs text-ink-muted border-t border-divider">
-                  Affichage des 50 dernières transactions sur {caisseTransactions.length}
+              {caisseTransactions.length > 10 && (
+                <div className="px-6 py-3 flex items-center justify-between border-t border-divider">
+                  <p className="text-xs text-ink-muted">
+                    {(caisseTxPage - 1) * 10 + 1}–{Math.min(caisseTxPage * 10, caisseTransactions.length)} sur {caisseTransactions.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCaisseTxPage(p => Math.max(1, p - 1))}
+                      disabled={caisseTxPage === 1}
+                      className="px-3 py-1 text-xs font-medium rounded-lg border border-outline hover:bg-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Précédent
+                    </button>
+                    <span className="text-xs text-ink-muted">{caisseTxPage} / {Math.ceil(caisseTransactions.length / 10)}</span>
+                    <button
+                      onClick={() => setCaisseTxPage(p => Math.min(Math.ceil(caisseTransactions.length / 10), p + 1))}
+                      disabled={caisseTxPage >= Math.ceil(caisseTransactions.length / 10)}
+                      className="px-3 py-1 text-xs font-medium rounded-lg border border-outline hover:bg-raised transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Suivant
+                    </button>
+                  </div>
                 </div>
               )}
             </>
@@ -1718,7 +1742,11 @@ export default function EmployeDetail() {
                   >
                     <option value="">— Sélectionner un rôle —</option>
                     {Object.entries(roleCfg)
-                      .filter(([key]) => key !== user.role)
+                      .filter(([key]) => {
+                        if (key === user.role) return false
+                        if (currentUser?.role === 'manager' && (key === 'super_admin' || key === 'manager')) return false
+                        return true
+                      })
                       .map(([key, cfg]) => (
                         <option key={key} value={key}>{cfg.label}</option>
                       ))}
@@ -1747,7 +1775,7 @@ export default function EmployeDetail() {
                 <button
                   onClick={handlePromote}
                   disabled={!promoteRole || !promoteMotif.trim() || promoteUser.isPending}
-                  className="px-5 py-2 bg-grape hover:bg-grape/90 text-white font-medium rounded-xl transition-colors disabled:opacity-70 text-sm flex items-center gap-2"
+                  className="px-5 py-2 bg-grape hover:bg-grape/90 text-white font-medium rounded-xl transition-colors disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-sm flex items-center gap-2"
                 >
                   {promoteUser.isPending ? 'Promotion...' : 'Confirmer la promotion'}
                 </button>

@@ -419,6 +419,16 @@ export class UsersService {
     dto: CreatePromotionDto,
     currentUserId: number,
   ) {
+    const currentUser = await this.userModel.findByPk(currentUserId);
+    if (currentUser?.role === Role.Manager) {
+      const restrictedRoles = [Role.SuperAdmin, Role.Manager];
+      if (restrictedRoles.includes(dto.nouveauRole)) {
+        throw new ForbiddenException(
+          'Un manager ne peut pas promouvoir un employé au rôle SuperAdmin ou Manager',
+        );
+      }
+    }
+
     const user = await this.userModel.findByPk(userId);
 
     if (!user) {

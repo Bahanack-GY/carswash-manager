@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, literal, fn, col } from 'sequelize';
 import { Client } from '../clients/models/client.model.js';
@@ -545,6 +545,12 @@ export class MarketingService {
   async sendCampaign(id: number) {
     const campaign = await this.campaignModel.findByPk(id);
     if (!campaign) throw new NotFoundException(`Campagne #${id} introuvable`);
+
+    if (campaign.status === CampaignStatus.Sent || campaign.status === CampaignStatus.Sending) {
+      throw new ConflictException(
+        `La campagne a déjà été envoyée (statut: ${campaign.status}). Créez une nouvelle campagne pour renvoyer.`,
+      );
+    }
 
     campaign.status = CampaignStatus.Sending;
     await campaign.save();

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { Op, Transaction } from 'sequelize';
@@ -27,11 +27,20 @@ import { AssignWashersDto } from './dto/assign-washers.dto.js';
 import { AddServicesToCouponDto } from './dto/add-services-to-coupon.dto.js';
 import { CreateNouveauLavageDto } from './dto/create-nouveau-lavage.dto.js';
 import {
+  AffectationStatus,
   FichePisteStatus,
   CouponStatus,
 } from '../common/constants/status.enum.js';
 import { CommercialService } from '../commercial/commercial.service.js';
 import { BonLavage } from '../bonds/models/bon-lavage.model.js';
+import { Affectation } from '../users/models/affectation.model.js';
+
+const COUPON_TRANSITIONS: Record<CouponStatus, CouponStatus[]> = {
+  [CouponStatus.Pending]: [CouponStatus.Washing],
+  [CouponStatus.Washing]: [CouponStatus.Done],
+  [CouponStatus.Done]: [CouponStatus.Paid],
+  [CouponStatus.Paid]: [],
+};
 
 @Injectable()
 export class WashOperationsService {
@@ -63,6 +72,8 @@ export class WashOperationsService {
     private readonly promotionModel: typeof MarketingPromotion,
     @InjectModel(BonLavage)
     private readonly bonLavageModel: typeof BonLavage,
+    @InjectModel(Affectation)
+    private readonly affectationModel: typeof Affectation,
     private readonly commercialService: CommercialService,
   ) {}
 
@@ -421,6 +432,13 @@ export class WashOperationsService {
       throw new NotFoundException(`Coupon #${id} introuvable`);
     }
 
+    const allowed = COUPON_TRANSITIONS[coupon.statut] ?? [];
+    if (!allowed.includes(dto.statut)) {
+      throw new BadRequestException(
+        `Transition invalide : ${coupon.statut} → ${dto.statut}. Transitions autorisées depuis "${coupon.statut}" : ${allowed.length ? allowed.join(', ') : 'aucune'}`,
+      );
+    }
+
     await this.sequelize.transaction(
       { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
       async (t) => {
@@ -512,9 +530,26 @@ export class WashOperationsService {
   }
 
   async assignWashers(couponId: number, dto: AssignWashersDto) {
-    const coupon = await this.couponModel.findByPk(couponId);
+    const coupon = await this.couponModel.findByPk(couponId, {
+      include: [{ model: FichePiste, attributes: ['stationId'] }],
+    });
     if (!coupon) {
       throw new NotFoundException(`Coupon #${couponId} introuvable`);
+    }
+
+    if (dto.washerIds.length > 0 && coupon.fichePiste?.stationId) {
+      const stationId = coupon.fichePiste.stationId;
+      const validAffectations = await this.affectationModel.findAll({
+        where: { userId: dto.washerIds, stationId, statut: AffectationStatus.Active },
+        attributes: ['userId'],
+      });
+      const validIds = new Set(validAffectations.map((a) => a.userId));
+      const invalid = dto.washerIds.filter((id) => !validIds.has(id));
+      if (invalid.length > 0) {
+        throw new BadRequestException(
+          `Les laveurs suivants ne sont pas affectés à cette station : ${invalid.join(', ')}`,
+        );
+      }
     }
 
     await this.sequelize.transaction(
@@ -538,7 +573,9 @@ export class WashOperationsService {
     });
     if (!coupon) throw new NotFoundException(`Coupon #${id} introuvable`);
     if (coupon.statut !== CouponStatus.Washing) {
-      throw new NotFoundException('Impossible de modifier un coupon qui n\'est pas en cours de lavage');
+      throw new BadRequestException(
+        `Impossible de modifier un coupon avec le statut "${coupon.statut}" — le coupon doit être en cours de lavage`,
+      );
     }
 
     const fiche = coupon.fichePiste;

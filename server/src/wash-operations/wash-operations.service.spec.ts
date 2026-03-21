@@ -18,6 +18,7 @@ import { Performance } from '../users/models/performance.model';
 import { CommercialService } from '../commercial/commercial.service';
 import { MarketingPromotion } from '../marketing/models/promotion.model';
 import { BonLavage } from '../bonds/models/bon-lavage.model';
+import { Affectation } from '../users/models/affectation.model';
 import { CouponStatus, FichePisteStatus } from '../common/constants/status.enum';
 
 describe('WashOperationsService', () => {
@@ -196,6 +197,12 @@ describe('WashOperationsService', () => {
                         findByPk: jest.fn(),
                         findOne: jest.fn(),
                         create: jest.fn(),
+                    },
+                },
+                {
+                    provide: getModelToken(Affectation),
+                    useValue: {
+                        findAll: jest.fn(),
                     },
                 },
                 {
@@ -463,7 +470,7 @@ describe('WashOperationsService', () => {
         const mockWasher = { id: 10, bonusParLavage: 150 };
         const mockDoneCoupon = {
             id: 1,
-            statut: CouponStatus.Pending,
+            statut: CouponStatus.Washing,
             fichePiste: { stationId: 1, typeLavage: { fraisService: 200 }, extras: [] },
             washers: [mockWasher],
             update: jest.fn().mockResolvedValue(undefined),

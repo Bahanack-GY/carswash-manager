@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
 import { Incident } from './models/incident.model.js';
@@ -7,6 +7,12 @@ import { User } from '../users/models/user.model.js';
 import { CreateIncidentDto } from './dto/create-incident.dto.js';
 import { UpdateIncidentDto } from './dto/update-incident.dto.js';
 import { IncidentStatus, IncidentSeverity } from '../common/constants/status.enum.js';
+
+const INCIDENT_TRANSITIONS: Record<IncidentStatus, IncidentStatus[]> = {
+  [IncidentStatus.Open]: [IncidentStatus.InProgress, IncidentStatus.Resolved],
+  [IncidentStatus.InProgress]: [IncidentStatus.Resolved],
+  [IncidentStatus.Resolved]: [IncidentStatus.Open, IncidentStatus.InProgress],
+};
 
 @Injectable()
 export class IncidentsService {
@@ -91,12 +97,20 @@ export class IncidentsService {
   async update(id: number, updateIncidentDto: UpdateIncidentDto) {
     const incident = await this.findOne(id);
 
-    // Auto-set resolvedAt when status changes to resolved
-    if (
-      updateIncidentDto.statut === IncidentStatus.Resolved &&
-      !updateIncidentDto.resolvedAt
-    ) {
-      updateIncidentDto.resolvedAt = new Date().toISOString();
+    if (updateIncidentDto.statut && updateIncidentDto.statut !== incident.statut) {
+      const allowed = INCIDENT_TRANSITIONS[incident.statut] ?? [];
+      if (!allowed.includes(updateIncidentDto.statut)) {
+        throw new BadRequestException(
+          `Transition invalide : ${incident.statut} → ${updateIncidentDto.statut}. Transitions autorisées : ${allowed.length ? allowed.join(', ') : 'aucune'}`,
+        );
+      }
+
+      // Auto-set resolvedAt when resolving; clear it when un-resolving
+      if (updateIncidentDto.statut === IncidentStatus.Resolved && !updateIncidentDto.resolvedAt) {
+        updateIncidentDto.resolvedAt = new Date().toISOString();
+      } else if (updateIncidentDto.statut !== IncidentStatus.Resolved) {
+        (updateIncidentDto as any).resolvedAt = null;
+      }
     }
 
     return incident.update(updateIncidentDto);

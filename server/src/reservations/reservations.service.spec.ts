@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/sequelize';
+import { Sequelize } from 'sequelize-typescript';
 import { ReservationsService } from './reservations.service';
 import { Reservation } from './models/reservation.model';
 
@@ -23,6 +24,12 @@ describe('ReservationsService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ReservationsService,
+                {
+                    provide: Sequelize,
+                    useValue: {
+                        transaction: jest.fn().mockImplementation((_opts: any, cb: any) => cb({ LOCK: { UPDATE: 'UPDATE' } })),
+                    },
+                },
                 {
                     provide: getModelToken(Reservation),
                     useValue: {
@@ -116,7 +123,9 @@ describe('ReservationsService', () => {
     // ─── create ───────────────────────────────────────────────────────
     describe('create', () => {
         it('should create a reservation with auto-generated numero', async () => {
-            reservationModel.findOne.mockResolvedValue(null); // no previous reservation
+            // First findOne: double-booking check → no conflict
+            // Second findOne: generateNumero → no previous reservation
+            reservationModel.findOne.mockResolvedValue(null);
             reservationModel.create.mockResolvedValue({
                 ...mockReservation,
                 numero: 'RES-0001',
@@ -133,7 +142,10 @@ describe('ReservationsService', () => {
         });
 
         it('should increment numero from last reservation', async () => {
-            reservationModel.findOne.mockResolvedValue({ numero: 'RES-0042' });
+            // Double-booking check → no conflict, then generateNumero → last is RES-0042
+            reservationModel.findOne
+                .mockResolvedValueOnce(null)              // double-booking: no conflict
+                .mockResolvedValueOnce({ numero: 'RES-0042' }); // generateNumero
             reservationModel.create.mockImplementation((data: any) => ({
                 id: 2,
                 ...data,
@@ -170,6 +182,14 @@ describe('ReservationsService', () => {
             await expect(
                 service.update(999, { statut: 'confirmed' } as any),
             ).rejects.toThrow(NotFoundException);
+        });
+
+        it('should throw BadRequestException for invalid status transition', async () => {
+            reservationModel.findByPk.mockResolvedValue({ ...mockReservation, statut: 'done', update: jest.fn() });
+
+            await expect(
+                service.update(1, { statut: 'pending' } as any),
+            ).rejects.toThrow(BadRequestException);
         });
     });
 });

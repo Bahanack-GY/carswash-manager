@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { Op, Transaction, literal } from 'sequelize';
@@ -174,43 +174,54 @@ export class InventoryService {
   }
 
   async createMouvement(dto: CreateMouvementStockDto, userId: number) {
-    const produit = await this.produitModel.findByPk(dto.produitId);
-    if (!produit) {
-      throw new NotFoundException(`Produit #${dto.produitId} introuvable`);
-    }
-
     return this.sequelize.transaction(
       { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
       async (t) => {
-      const mouvement = await this.mouvementStockModel.create(
-        { ...dto, userId } as any,
-        { transaction: t },
-      );
+        // Lock the row so concurrent movements on the same product are serialized
+        const produit = await this.produitModel.findByPk(dto.produitId, {
+          lock: Transaction.LOCK.UPDATE,
+          transaction: t,
+        });
+        if (!produit) {
+          throw new NotFoundException(`Produit #${dto.produitId} introuvable`);
+        }
 
-      switch (dto.typeMouvement) {
-        case MouvementType.Entree:
-          await produit.increment('quantiteStock', { by: dto.quantite, transaction: t });
-          if (produit.prixRevient > 0) {
-            await this.paiementModel.create({
-              methode: PaymentMethod.Cash,
-              montant: dto.quantite * produit.prixRevient,
-              type: TransactionType.Expense,
-              stationId: produit.stationId,
-              categorie: 'fournitures',
-              description: `Réapprovisionnement — ${produit.nom} (${dto.quantite} ${produit.unite ?? 'u.'} × ${produit.prixRevient} FCFA)${dto.motif ? ' — ' + dto.motif : ''}`,
-            } as any, { transaction: t });
-          }
-          break;
-        case MouvementType.Sortie:
-          await produit.decrement('quantiteStock', { by: dto.quantite, transaction: t });
-          break;
-        case MouvementType.Ajustement:
-          await produit.update({ quantiteStock: dto.quantite }, { transaction: t });
-          break;
-      }
+        if (dto.typeMouvement === MouvementType.Sortie && produit.quantiteStock < dto.quantite) {
+          throw new BadRequestException(
+            `Stock insuffisant pour ${produit.nom} : disponible ${produit.quantiteStock}, demandé ${dto.quantite}`,
+          );
+        }
 
-      return mouvement;
-    });
+        const mouvement = await this.mouvementStockModel.create(
+          { ...dto, userId } as any,
+          { transaction: t },
+        );
+
+        switch (dto.typeMouvement) {
+          case MouvementType.Entree:
+            await produit.increment('quantiteStock', { by: dto.quantite, transaction: t });
+            if (produit.prixRevient > 0) {
+              await this.paiementModel.create({
+                methode: PaymentMethod.Cash,
+                montant: dto.quantite * produit.prixRevient,
+                type: TransactionType.Expense,
+                stationId: produit.stationId,
+                categorie: 'fournitures',
+                description: `Réapprovisionnement — ${produit.nom} (${dto.quantite} ${produit.unite ?? 'u.'} × ${produit.prixRevient} FCFA)${dto.motif ? ' — ' + dto.motif : ''}`,
+              } as any, { transaction: t });
+            }
+            break;
+          case MouvementType.Sortie:
+            await produit.decrement('quantiteStock', { by: dto.quantite, transaction: t });
+            break;
+          case MouvementType.Ajustement:
+            await produit.update({ quantiteStock: dto.quantite }, { transaction: t });
+            break;
+        }
+
+        return mouvement;
+      },
+    );
   }
 
   // ─── Fournisseurs ─────────────────────────────────────────────────
@@ -311,12 +322,13 @@ export class InventoryService {
   }
 
   async createCommande(dto: CreateCommandeAchatDto) {
-    const numero = await this.generateCommandeNumero();
-
-    return this.commandeAchatModel.create({
-      ...dto,
-      numero,
-    } as any);
+    return this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
+      async (t) => {
+        const numero = await this.generateCommandeNumero(t);
+        return this.commandeAchatModel.create({ ...dto, numero } as any, { transaction: t });
+      },
+    );
   }
 
   async updateCommande(id: number, dto: UpdateCommandeAchatDto) {
@@ -329,10 +341,12 @@ export class InventoryService {
     return commande.update(dto as any);
   }
 
-  private async generateCommandeNumero(): Promise<string> {
+  private async generateCommandeNumero(t: Transaction): Promise<string> {
     const lastCommande = await this.commandeAchatModel.findOne({
       order: [['numero', 'DESC']],
       attributes: ['numero'],
+      lock: Transaction.LOCK.UPDATE,
+      transaction: t,
     });
 
     let nextNumber = 1;

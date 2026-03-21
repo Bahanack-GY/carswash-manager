@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { Op, Transaction, fn, col, literal } from 'sequelize';
@@ -11,7 +11,7 @@ import { Station } from '../stations/models/station.model.js';
 import { User } from '../users/models/user.model.js';
 import { CreateFactureDto } from './dto/create-facture.dto.js';
 import { CreatePaiementDto } from './dto/create-paiement.dto.js';
-import { TransactionType } from '../common/constants/status.enum.js';
+import { CouponStatus, TransactionType } from '../common/constants/status.enum.js';
 
 @Injectable()
 export class BillingService {
@@ -23,6 +23,8 @@ export class BillingService {
     private readonly paiementModel: typeof Paiement,
     @InjectModel(LigneVente)
     private readonly ligneVenteModel: typeof LigneVente,
+    @InjectModel(Coupon)
+    private readonly couponModel: typeof Coupon,
   ) {}
 
   // ─── Factures ───────────────────────────────────────────────────────
@@ -85,6 +87,18 @@ export class BillingService {
 
   async createFacture(dto: CreateFactureDto) {
     const { lignes, ...factureData } = dto;
+
+    if (dto.couponId) {
+      const coupon = await this.couponModel.findByPk(dto.couponId);
+      if (!coupon) {
+        throw new NotFoundException(`Coupon #${dto.couponId} introuvable`);
+      }
+      if (coupon.statut !== CouponStatus.Done) {
+        throw new BadRequestException(
+          `Le coupon #${coupon.numero} n'est pas encore terminé (statut: ${coupon.statut}). Seuls les coupons avec le statut "done" peuvent être facturés.`,
+        );
+      }
+    }
 
     const factureId = await this.sequelize.transaction(
       { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },

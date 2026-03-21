@@ -2,6 +2,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsInt,
+  Min,
   IsString,
   IsEnum,
 } from 'class-validator';
@@ -35,6 +36,7 @@ export class CreateMouvementStockDto {
 
   @ApiProperty({ example: 20, description: 'Quantité du mouvement' })
   @IsInt({ message: 'La quantité doit être un entier' })
+  @Min(1, { message: 'La quantité doit être supérieure à zéro' })
   @IsNotEmpty({ message: 'La quantité est requise' })
   quantite: number;
 

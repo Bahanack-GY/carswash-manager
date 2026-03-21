@@ -4,6 +4,8 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { Sequelize } from 'sequelize-typescript';
+import { Transaction } from 'sequelize';
 import { BonLavage } from './models/bon-lavage.model.js';
 import { User } from '../users/models/user.model.js';
 import { Coupon } from '../wash-operations/models/coupon.model.js';
@@ -14,20 +16,27 @@ import { UseBonLavageDto } from './dto/use-bon-lavage.dto.js';
 @Injectable()
 export class BondsService {
   constructor(
+    private readonly sequelize: Sequelize,
     @InjectModel(BonLavage)
     private readonly bonLavageModel: typeof BonLavage,
   ) {}
 
   async create(dto: CreateBonLavageDto, createdById: number) {
-    const code = await this.generateBonCode();
-    const bond = await this.bonLavageModel.create({
-      code,
-      pourcentage: dto.pourcentage,
-      createdById,
-      stationId: dto.stationId ?? null,
-      description: dto.description ?? null,
-    } as any);
-    return this.findOne(bond.id);
+    const bondId = await this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
+      async (t) => {
+        const code = await this.generateBonCode(t);
+        const bond = await this.bonLavageModel.create({
+          code,
+          pourcentage: dto.pourcentage,
+          createdById,
+          stationId: dto.stationId ?? null,
+          description: dto.description ?? null,
+        } as any, { transaction: t });
+        return bond.id;
+      },
+    );
+    return this.findOne(bondId);
   }
 
   async findAll(query: {
@@ -124,14 +133,21 @@ export class BondsService {
     return this.findOne(bond.id);
   }
 
-  private async generateBonCode(): Promise<string> {
-    let code: string;
-    let exists: boolean;
-    do {
-      const random = Math.floor(Math.random() * 9999) + 1;
-      code = `BON-${String(random).padStart(4, '0')}`;
-      exists = !!(await this.bonLavageModel.findOne({ where: { code } }));
-    } while (exists);
-    return code;
+  private async generateBonCode(t: Transaction): Promise<string> {
+    // Lock the last row so concurrent creates are serialized within the transaction
+    const last = await this.bonLavageModel.findOne({
+      order: [['id', 'DESC']],
+      attributes: ['code'],
+      lock: Transaction.LOCK.UPDATE,
+      transaction: t,
+    });
+
+    let nextNumber = 1;
+    if (last?.code) {
+      const match = last.code.match(/BON-(\d+)/);
+      if (match) nextNumber = parseInt(match[1], 10) + 1;
+    }
+
+    return `BON-${String(nextNumber).padStart(4, '0')}`;
   }
 }

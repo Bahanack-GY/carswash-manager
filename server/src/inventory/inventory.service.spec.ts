@@ -394,13 +394,11 @@ describe('InventoryService', () => {
             expect(mouvementTxn).toBe(incrementTxn);
         });
 
-        it('throws NotFoundException before starting transaction when product missing', async () => {
+        it('throws NotFoundException inside transaction when product missing', async () => {
             produitModel.findByPk.mockResolvedValue(null);
 
             await expect(service.createMouvement({ produitId: 999, typeMouvement: 'entree', quantite: 1 } as any, 1))
                 .rejects.toThrow(NotFoundException);
-
-            expect(sequelize.transaction).not.toHaveBeenCalled();
         });
 
         it('decrements stock for sortie', async () => {

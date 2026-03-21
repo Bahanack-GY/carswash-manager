@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsInt,
   IsNumber,
+  IsPositive,
   IsString,
   IsEnum,
 } from 'class-validator';
@@ -29,6 +30,7 @@ export class CreatePaiementDto {
 
   @ApiProperty({ example: 5000.0, description: 'Montant du paiement' })
   @IsNumber({}, { message: 'Le montant doit être un nombre' })
+  @IsPositive({ message: 'Le montant doit être supérieur à zéro' })
   @IsNotEmpty({ message: 'Le montant est requis' })
   montant: number;
 

@@ -9,6 +9,7 @@ import { CouponWashers } from './models/coupon-washers.model.js';
 import { Vehicle } from '../clients/models/vehicle.model.js';
 import { Client } from '../clients/models/client.model.js';
 import { User } from '../users/models/user.model.js';
+import { Affectation } from '../users/models/affectation.model.js';
 import { Station } from '../stations/models/station.model.js';
 import { Performance } from '../users/models/performance.model.js';
 import { Paiement } from '../billing/models/paiement.model.js';
@@ -37,6 +38,7 @@ import { AuditModule } from '../audit/audit.module.js';
       Vehicle,
       Client,
       User,
+      Affectation,
       Station,
       Performance,
       Paiement,
