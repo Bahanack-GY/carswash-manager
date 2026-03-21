@@ -32,6 +32,7 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'POST /coupons':                      'Création coupon',
   'PATCH /coupons/:id/status':          'Changement statut coupon',
   'PATCH /coupons/:id/washers':         'Assignation laveurs coupon',
+  'PATCH /coupons/:id/services':        'Ajout services (en cours de lavage)',
   'POST /wash-types':                   'Création type de lavage',
   'PATCH /wash-types/:id':              'Modification type de lavage',
   'POST /extras':                       'Création service spécial',

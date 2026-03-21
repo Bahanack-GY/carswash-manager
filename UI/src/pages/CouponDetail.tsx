@@ -6,9 +6,12 @@ import {
   Ticket, ArrowLeft, User, Car, Droplets, MapPin, ShieldCheck,
   Clock, Loader2, CheckCircle2, CreditCard, Banknote, Smartphone,
   Play, Square, Wallet, Users, Phone, Mail, Sparkles, Printer, Zap,
+  Plus, ClipboardList, X, Search,
 } from '@/lib/icons'
 import Logo from '@/assets/Logo.png'
-import { useCoupon, useUpdateCouponStatus } from '@/api/coupons'
+import { useCoupon, useUpdateCouponStatus, useAddServicesToCoupon, useCouponHistory } from '@/api/coupons'
+import { useWashTypes } from '@/api/wash-types'
+import { useExtras } from '@/api/extras'
 import { useCreatePaiement } from '@/api/paiements'
 import type { CreatePaiementDto } from '@/api/paiements/types'
 import { useAuth } from '@/contexts/AuthContext'
@@ -59,15 +62,49 @@ export default function CouponDetail() {
   const navigate = useNavigate()
   const { selectedStationId, hasRole } = useAuth()
   const canPay = hasRole('super_admin') || hasRole('manager') || hasRole('caissiere')
+  const canAddServices = hasRole('super_admin') || hasRole('manager') || hasRole('caissiere') || hasRole('controleur')
 
   const { data: coupon, isLoading, isError } = useCoupon(couponId)
   const updateStatus = useUpdateCouponStatus()
+  const addServices = useAddServicesToCoupon()
   const createPaiement = useCreatePaiement()
+  const { data: historyData } = useCouponHistory(couponId)
+  const { data: washTypesData } = useWashTypes(selectedStationId ? { stationId: selectedStationId } : undefined)
+  const { data: extrasData } = useExtras(selectedStationId ? { stationId: selectedStationId } : undefined)
 
   const [isPaid, setIsPaid] = useState(false)
   const [paidMethod, setPaidMethod] = useState<string>('cash')
   const [paymentMethod, setPaymentMethod] = useState<CreatePaiementDto['methode']>('cash')
   const [referenceExterne, setReferenceExterne] = useState('')
+
+  // Add-services state
+  const [showAddServices, setShowAddServices] = useState(false)
+  const [addServiceSearch, setAddServiceSearch] = useState('')
+  const [addServiceTab, setAddServiceTab] = useState<'all' | 'wash' | 'extra'>('all')
+  const [addServiceCategory, setAddServiceCategory] = useState('')
+  const [pickedExtrasIds, setPickedExtrasIds] = useState<number[]>([])
+  const [pickedWashIds, setPickedWashIds] = useState<number[]>([])
+
+  const togglePickedExtra = (id: number) =>
+    setPickedExtrasIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])
+  const togglePickedWash = (id: number) =>
+    setPickedWashIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])
+
+  const handleAddServices = async () => {
+    if (pickedExtrasIds.length === 0 && pickedWashIds.length === 0) return
+    try {
+      await addServices.mutateAsync({
+        id: coupon!.id,
+        data: { extrasIds: pickedExtrasIds, typeLavageIds: pickedWashIds },
+      })
+      setPickedExtrasIds([])
+      setPickedWashIds([])
+      setShowAddServices(false)
+      toast.success('Services ajoutés avec succès !')
+    } catch {
+      toast.error("Erreur lors de l'ajout des services")
+    }
+  }
 
   if (isLoading) {
     return (
@@ -323,6 +360,36 @@ export default function CouponDetail() {
               <p className="text-sm text-ink-light">{fp.etatLieu}</p>
             </motion.div>
           )}
+
+          {/* Edit history */}
+          {historyData && (historyData.data ?? []).length > 0 && (
+            <motion.div variants={rise} className="bg-panel border border-edge rounded-2xl p-5 shadow-sm">
+              <p className="text-[10px] font-bold text-ink-faded uppercase tracking-widest mb-4 flex items-center gap-1.5">
+                <ClipboardList className="w-3.5 h-3.5" /> Historique des modifications
+              </p>
+              <div className="space-y-2">
+                {(historyData.data ?? []).map((entry) => (
+                  <div key={entry.id} className="flex items-start gap-3 text-sm">
+                    <div className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-ink font-medium">{entry.actionLabel}</p>
+                      <p className="text-xs text-ink-muted mt-0.5">
+                        {entry.userName ?? 'Système'}{entry.userRole ? ` (${entry.userRole})` : ''} · {new Date(entry.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      {entry.requestBody && (entry.requestBody.extrasIds?.length > 0 || entry.requestBody.typeLavageIds?.length > 0) && (
+                        <p className="text-xs text-ink-faded mt-0.5 italic">
+                          {[
+                            entry.requestBody.typeLavageIds?.length > 0 && `${entry.requestBody.typeLavageIds.length} lavage(s)`,
+                            entry.requestBody.extrasIds?.length > 0 && `${entry.requestBody.extrasIds.length} service(s) spécial(aux)`,
+                          ].filter(Boolean).join(', ')} ajouté(s)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
         </div>
 
         {/* Right — Action sidebar */}
@@ -359,6 +426,166 @@ export default function CouponDetail() {
                   <p className="text-sm font-semibold text-ink">Lavage en cours</p>
                   <p className="text-xs text-ink-muted mt-1">Le véhicule est en cours de lavage.</p>
                 </div>
+
+                {canAddServices && (
+                  <button
+                    onClick={() => setShowAddServices((v) => !v)}
+                    className="w-full flex items-center justify-center gap-2 px-5 py-2.5 border border-accent-line bg-accent-wash text-accent font-semibold rounded-xl hover:bg-accent-wash/80 transition-all text-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Ajouter un service
+                  </button>
+                )}
+
+                {showAddServices && canAddServices && (() => {
+                  const allWashes: any[] = washTypesData || []
+                  const allExtras: any[] = extrasData || []
+                  const q = addServiceSearch.toLowerCase()
+
+                  const extraCategories = Array.from(new Set(allExtras.map((e: any) => e.categorie).filter(Boolean))) as string[]
+
+                  const filteredWashes = allWashes.filter(w =>
+                    (!q || w.nom.toLowerCase().includes(q)) &&
+                    (addServiceTab === 'all' || addServiceTab === 'wash')
+                  )
+                  const filteredExtras = allExtras.filter((e: any) =>
+                    (!q || e.nom.toLowerCase().includes(q)) &&
+                    (addServiceTab === 'all' || addServiceTab === 'extra') &&
+                    (!addServiceCategory || e.categorie === addServiceCategory)
+                  )
+
+                  const totalPicked = pickedExtrasIds.length + pickedWashIds.length
+
+                  return (
+                    <div className="bg-inset border border-outline rounded-xl overflow-hidden">
+                      {/* Search */}
+                      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-outline bg-panel focus-within:border-accent transition-colors">
+                        <Search className="w-3.5 h-3.5 text-ink-muted shrink-0" />
+                        <input
+                          value={addServiceSearch}
+                          onChange={(e) => setAddServiceSearch(e.target.value)}
+                          placeholder="Rechercher…"
+                          className="flex-1 bg-transparent text-sm text-ink placeholder-ink-muted outline-none"
+                        />
+                        {addServiceSearch && (
+                          <button onClick={() => setAddServiceSearch('')} className="text-ink-muted hover:text-ink">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Tabs */}
+                      <div className="flex border-b border-outline">
+                        {([
+                          { key: 'all', label: 'Tous' },
+                          { key: 'wash', label: 'Lavages' },
+                          { key: 'extra', label: 'Spéciaux' },
+                        ] as const).map(({ key, label }) => (
+                          <button
+                            key={key}
+                            onClick={() => { setAddServiceTab(key); setAddServiceCategory('') }}
+                            className={`flex-1 py-2 text-xs font-semibold transition-colors ${
+                              addServiceTab === key
+                                ? 'text-accent border-b-2 border-accent bg-accent-wash/50'
+                                : 'text-ink-muted hover:text-ink'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Category pills — only for extras tab */}
+                      {(addServiceTab === 'extra' || addServiceTab === 'all') && extraCategories.length > 0 && (
+                        <div className="flex gap-1.5 flex-wrap px-3 py-2 border-b border-outline bg-panel/50">
+                          <button
+                            onClick={() => setAddServiceCategory('')}
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                              !addServiceCategory ? 'bg-accent-wash text-accent' : 'bg-inset text-ink-muted hover:text-ink'
+                            }`}
+                          >
+                            Toutes
+                          </button>
+                          {extraCategories.map((cat) => (
+                            <button
+                              key={cat}
+                              onClick={() => setAddServiceCategory(addServiceCategory === cat ? '' : cat)}
+                              className={`px-2 py-0.5 rounded-full text-[11px] font-medium capitalize transition-colors ${
+                                addServiceCategory === cat ? 'bg-accent-wash text-accent' : 'bg-inset text-ink-muted hover:text-ink'
+                              }`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Results list */}
+                      <div className="max-h-56 overflow-y-auto divide-y divide-divider">
+                        {filteredWashes.length === 0 && filteredExtras.length === 0 && (
+                          <p className="text-sm text-ink-muted text-center py-6">Aucun résultat</p>
+                        )}
+
+                        {filteredWashes.map((w: any) => {
+                          const on = pickedWashIds.includes(w.id)
+                          return (
+                            <button key={`w-${w.id}`} onClick={() => togglePickedWash(w.id)}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${on ? 'bg-accent-wash' : 'hover:bg-raised/60'}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${on ? 'bg-teal-500 border-teal-500' : 'border-outline'}`}>
+                                {on && <span className="text-white text-[9px] font-bold">✓</span>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className={`block text-sm truncate ${on ? 'font-medium text-accent-bold' : 'text-ink'}`}>{w.nom}</span>
+                                <span className="text-[10px] text-ink-muted">Lavage</span>
+                              </div>
+                              <span className={`text-xs font-semibold shrink-0 ${on ? 'text-accent-bold' : 'text-ink-muted'}`}>
+                                {Number(w.prixBase).toLocaleString()} F
+                              </span>
+                            </button>
+                          )
+                        })}
+
+                        {filteredExtras.map((e: any) => {
+                          const on = pickedExtrasIds.includes(e.id)
+                          return (
+                            <button key={`e-${e.id}`} onClick={() => togglePickedExtra(e.id)}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${on ? 'bg-accent-wash' : 'hover:bg-raised/60'}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${on ? 'bg-teal-500 border-teal-500' : 'border-outline'}`}>
+                                {on && <span className="text-white text-[9px] font-bold">✓</span>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className={`block text-sm truncate ${on ? 'font-medium text-accent-bold' : 'text-ink'}`}>{e.nom}</span>
+                                {e.categorie && <span className="text-[10px] text-ink-muted capitalize">{e.categorie}</span>}
+                              </div>
+                              <span className={`text-xs font-semibold shrink-0 ${on ? 'text-accent-bold' : 'text-ink-muted'}`}>
+                                {Number(e.prix).toLocaleString()} F
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      {/* Footer */}
+                      <div className="p-3 border-t border-outline bg-panel/50">
+                        {totalPicked > 0 ? (
+                          <button
+                            onClick={handleAddServices}
+                            disabled={addServices.isPending}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-teal-500 text-white font-semibold rounded-lg text-sm hover:bg-teal-600 transition-colors disabled:opacity-50"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            {addServices.isPending ? 'Ajout...' : `Confirmer (${totalPicked} service${totalPicked > 1 ? 's' : ''})`}
+                          </button>
+                        ) : (
+                          <p className="text-xs text-ink-muted text-center">Sélectionnez un ou plusieurs services</p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 <button
                   onClick={() => handleStatusUpdate('done')}
                   disabled={updateStatus.isPending}

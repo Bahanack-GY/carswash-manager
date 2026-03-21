@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -6,6 +6,7 @@ import {
   CreditCard, Banknote, Smartphone, Wallet, Receipt, TrendingUp,
   ArrowDownLeft, ArrowUpRight, Search, Filter, Plus, X,
   Ticket, Car, User, CheckCircle2, ChevronLeft, ChevronRight, Printer, Phone, Droplets, Gift,
+  Calendar,
 } from '@/lib/icons'
 import Logo from '@/assets/Logo.png'
 import { usePaiements, useCaisseSummary, useCreatePaiement } from '@/api/paiements'
@@ -39,6 +40,8 @@ const PAYMENT_METHODS: { value: CreatePaiementDto['methode']; label: string; ico
   { value: 'transfer', label: 'Virement', icon: Wallet },
 ]
 
+import { type Period, PERIOD_LABELS, PERIODS, fmtDate, getPeriodRange } from '@/lib/period'
+
 function buildMethodLabel(paiements: { methode: string; montant: number; description?: string }[]): string {
   if (!paiements || paiements.length === 0) return 'Espèces'
   if (paiements.length === 1) return METHOD_LABELS[paiements[0].methode] || paiements[0].methode
@@ -57,8 +60,20 @@ export default function Caisse() {
   const { selectedStationId, user: authUser } = useAuth()
   const isComptable = authUser?.role === 'comptable'
 
-  const [search, setSearch] = useState('')
+  const [period, setPeriod] = useState<Period>('today')
+  const [customStart, setCustomStart] = useState(fmtDate(new Date()))
+  const [customEnd, setCustomEnd] = useState(fmtDate(new Date()))
   const [page, setPage] = useState(1)
+
+  const { startDate, endDate } = useMemo(
+    () => getPeriodRange(period, customStart, customEnd),
+    [period, customStart, customEnd],
+  )
+
+  // Reset to page 1 whenever the period changes
+  useEffect(() => { setPage(1); setPaidPage(1) }, [startDate, endDate])
+
+  const [search, setSearch] = useState('')
   const [modalType, setModalType] = useState<'income' | null>(null)
   const [payingCouponId, setPayingCouponId] = useState<number | null>(null)
   const [couponPayMethod, setCouponPayMethod] = useState<CreatePaiementDto['methode']>('cash')
@@ -82,32 +97,37 @@ export default function Caisse() {
 
   // Queries & Mutations
   const stationId = selectedStationId || 0
-  const { data: summaryData } = useCaisseSummary(stationId)
-  const { data: paiementsData, isLoading, isError } = usePaiements({ stationId, page, limit: 10 })
+  const { data: summaryData } = useCaisseSummary(stationId, startDate, endDate)
+  const { data: paiementsData, isLoading, isError } = usePaiements({ stationId, page, limit: 10, startDate, endDate })
   const createPaiement = useCreatePaiement()
   const updateCouponStatus = useUpdateCouponStatus()
   const markBondAsUsed = useMarkBondAsUsed()
+  const [paidPage, setPaidPage] = useState(1)
+
   const { data: couponsData } = useCoupons({ statut: 'done', stationId: selectedStationId || undefined })
-  const { data: paidCouponsData } = useCoupons({ statut: 'paid', stationId: selectedStationId || undefined, limit: 20 })
+  const { data: paidCouponsData } = useCoupons({
+    statut: 'paid',
+    stationId: selectedStationId || undefined,
+    page: paidPage,
+    limit: 10,
+    startDate,
+    endDate,
+  })
 
   const doneCoupons: Coupon[] = (couponsData?.data || []).filter(c => c.statut === 'done')
-  const paidCoupons: Coupon[] = (paidCouponsData?.data || []).filter(c => c.statut === 'paid')
+  const paidCoupons: Coupon[] = paidCouponsData?.data || []
+  const paidTotalPages = paidCouponsData?.totalPages || 1
+  const paidTotal = paidCouponsData?.total || 0
 
   const paiementsList: Paiement[] = paiementsData?.data || []
   const totalPages = paiementsData?.totalPages || 1
   const totalTransactions = paiementsData?.total || 0
 
   const totalRecettes = Number(summaryData?.totalRecettes) || 0
-  // Break down by method from the transactions list
-  let totalCash = 0, totalMobile = 0, totalCard = 0
-  paiementsList.forEach(p => {
-    const amount = Number(p.montant) || 0
-    if (p.type === 'income') {
-      if (p.methode === 'cash') totalCash += amount
-      if (p.methode === 'wave' || p.methode === 'orange_money') totalMobile += amount
-      if (p.methode === 'card') totalCard += amount
-    }
-  })
+  const parMethode = summaryData?.parMethode ?? {}
+  const totalCash = Number(parMethode['cash']) || 0
+  const totalMobile = (Number(parMethode['wave']) || 0) + (Number(parMethode['orange_money']) || 0)
+  const totalCard = Number(parMethode['card']) || 0
 
   const summaryCards = [
     { label: 'Total encaissé', value: totalRecettes.toLocaleString(), unit: 'FCFA', icon: Wallet, accent: 'bg-teal-500/10 text-accent', trend: '' },
@@ -262,6 +282,49 @@ export default function Caisse() {
               </button>
             )}
           </div>
+        </motion.div>
+
+        {/* ── Period selector ──────────────────────── */}
+        <motion.div variants={rise} className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-1.5 bg-panel border border-edge rounded-xl p-1 shadow-sm flex-wrap">
+            <Calendar className="w-4 h-4 text-ink-muted ml-2" />
+            {PERIODS.map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  period === p
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-ink-muted hover:text-ink hover:bg-raised'
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' && (
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="date"
+                value={customStart}
+                max={customEnd}
+                onChange={e => setCustomStart(e.target.value)}
+                className="px-3 py-1.5 bg-panel border border-edge rounded-xl text-sm text-ink outline-none focus:border-teal-500 transition-colors"
+              />
+              <span className="text-xs text-ink-muted">→</span>
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart}
+                onChange={e => setCustomEnd(e.target.value)}
+                className="px-3 py-1.5 bg-panel border border-edge rounded-xl text-sm text-ink outline-none focus:border-teal-500 transition-colors"
+              />
+            </motion.div>
+          )}
         </motion.div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -473,7 +536,7 @@ export default function Caisse() {
         )}
 
         {/* ── Paid coupons — recent receipts ─────────── */}
-        {paidCoupons.length > 0 && (
+        {(paidCoupons.length > 0 || paidPage > 1) && (
           <motion.div variants={rise} className="bg-panel border border-edge rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-divider bg-inset/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -481,7 +544,7 @@ export default function Caisse() {
                   <Receipt className="w-4 h-4 text-emerald-600" />
                 </div>
                 <h3 className="font-heading font-semibold text-ink text-sm">Reçus récents</h3>
-                <span className="text-xs bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full font-medium">{paidCoupons.length}</span>
+                <span className="text-xs bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full font-medium">{paidTotal}</span>
               </div>
             </div>
 
@@ -626,6 +689,28 @@ export default function Caisse() {
                   </div>
                 )
               })}
+            </div>
+            <div className="px-5 py-3 border-t border-divider flex items-center justify-between">
+              <span className="text-sm text-ink-muted">{paidTotal} reçu(s)</span>
+              {paidTotalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPaidPage(p => Math.max(1, p - 1))}
+                    disabled={paidPage === 1}
+                    className="p-1.5 rounded-lg hover:bg-raised transition-colors disabled:opacity-30"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-2 text-xs font-medium text-ink">{paidPage} / {paidTotalPages}</span>
+                  <button
+                    onClick={() => setPaidPage(p => Math.min(paidTotalPages, p + 1))}
+                    disabled={paidPage === paidTotalPages}
+                    className="p-1.5 rounded-lg hover:bg-raised transition-colors disabled:opacity-30"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -6,10 +6,11 @@ import {
   Users, Search, Plus, Phone, Car, Award, CreditCard,
   ChevronRight, ChevronLeft, X, Mail, Palette, Tag, Truck,
   SlidersHorizontal, CalendarDays, MapPin, Download,
-  LayoutGrid, LayoutList,
+  LayoutGrid, LayoutList, Calendar,
 } from '@/lib/icons'
 import { useClients, useCreateClient, useCreateVehicle } from '@/api/clients'
 import { clientsApi } from '@/api/clients/api'
+import { type Period, PERIOD_LABELS, PERIODS, fmtDate, getPeriodRange } from '@/lib/period'
 import type { CreateClientDto, CreateVehicleDto, Client } from '@/api/clients/types'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -31,9 +32,25 @@ export default function Clients() {
   const [debouncedPhone, setDebouncedPhone] = useState('')
   const [quartierFilter, setQuartierFilter] = useState('')
   const [debouncedQuartier, setDebouncedQuartier] = useState('')
+  const [period, setPeriod] = useState<Period | 'none'>('none')
+  const [customStart, setCustomStart] = useState(fmtDate(new Date()))
+  const [customEnd, setCustomEnd] = useState(fmtDate(new Date()))
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [isExporting, setIsExporting] = useState(false)
+
+  // When a preset period is chosen, populate dateFrom/dateTo
+  const periodRange = useMemo(
+    () => period !== 'none' ? getPeriodRange(period as Period, customStart, customEnd) : null,
+    [period, customStart, customEnd],
+  )
+  useEffect(() => {
+    if (periodRange) {
+      setDateFrom(periodRange.startDate)
+      setDateTo(periodRange.endDate)
+      setPage(1)
+    }
+  }, [periodRange])
   const [view, setView] = useState<'table' | 'grid'>('table')
 
   /* ── Debounce search ─────────────────────────────── */
@@ -73,6 +90,7 @@ export default function Clients() {
     setDebouncedQuartier('')
     setDateFrom('')
     setDateTo('')
+    setPeriod('none')
     setPage(1)
   }
 
@@ -137,11 +155,23 @@ export default function Clients() {
   const totalPages = clientsData?.totalPages || 1
   const totalClients = clientsData?.total || 0
 
-  /* ── Derived stats from current page ─────────────── */
+  /* ── Full-period stats query (unpaginated) ─────────── */
+  const { data: statsData } = useClients({
+    stationId: selectedStationId || undefined,
+    vehicleType: vehicleType || undefined,
+    contact: debouncedPhone || undefined,
+    quartier: debouncedQuartier || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    limit: 9999,
+    page: 1,
+  })
+  const allClients: Client[] = statsData?.data || []
+
   let totalSubscribers = 0
   let totalPoints = 0
   let totalVehicles = 0
-  clientsList.forEach(c => {
+  allClients.forEach(c => {
     if (Number(c.activeSubscriptionCount) > 0) totalSubscribers++
     totalPoints += Number(c.pointsFidelite) || 0
     totalVehicles += Number(c.vehicleCount) || 0
@@ -181,6 +211,41 @@ export default function Clients() {
               <Plus className="w-4 h-4" /> Nouveau client
             </button>
           </div>
+        </motion.div>
+
+        {/* ── Period selector ──────────────────────────── */}
+        <motion.div variants={rise} className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-1.5 bg-panel border border-edge rounded-xl p-1 shadow-sm flex-wrap">
+            <Calendar className="w-4 h-4 text-ink-muted ml-2" />
+            <button
+              onClick={() => { setPeriod('none'); setDateFrom(''); setDateTo('') }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                period === 'none' ? 'bg-accent text-white shadow-sm' : 'text-ink-muted hover:text-ink hover:bg-raised'
+              }`}
+            >
+              Tous
+            </button>
+            {PERIODS.map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  period === p ? 'bg-accent text-white shadow-sm' : 'text-ink-muted hover:text-ink hover:bg-raised'
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' && (
+            <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2">
+              <input type="date" value={customStart} max={customEnd} onChange={e => setCustomStart(e.target.value)}
+                className="px-3 py-1.5 bg-panel border border-edge rounded-xl text-sm text-ink outline-none focus:border-teal-500 transition-colors" />
+              <span className="text-xs text-ink-muted">→</span>
+              <input type="date" value={customEnd} min={customStart} onChange={e => setCustomEnd(e.target.value)}
+                className="px-3 py-1.5 bg-panel border border-edge rounded-xl text-sm text-ink outline-none focus:border-teal-500 transition-colors" />
+            </motion.div>
+          )}
         </motion.div>
 
         {/* ── Stats ───────────────────────────────────── */}

@@ -47,12 +47,16 @@ export class CaisseController {
     type: String,
     description: 'Date au format YYYY-MM-DD (défaut: aujourd\'hui)',
   })
+  @ApiQuery({ name: 'startDate', required: false, type: String, description: 'Date début de période (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'endDate', required: false, type: String, description: 'Date fin de période (YYYY-MM-DD)' })
   @ApiResponse({ status: 200, description: 'Résumé de la caisse' })
   async getSummary(
     @Query('stationId') stationId: number,
     @Query('date') date?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.billingService.getCaisseSummary(stationId, date);
+    return this.billingService.getCaisseSummary(stationId, date, startDate, endDate);
   }
 
   @Get('transactions')

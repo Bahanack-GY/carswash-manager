@@ -31,6 +31,7 @@ export interface PaginatedCoupons {
     total: number;
     page: number;
     limit: number;
+    totalPages: number;
 }
 
 export interface CreateCouponDto {
@@ -46,9 +47,27 @@ export interface AssignWashersDto {
     washerIds: number[];
 }
 
+export interface AddServicesToCouponDto {
+    extrasIds?: number[];
+    typeLavageIds?: number[];
+}
+
+export interface CouponEditHistory {
+    id: number;
+    userId: number | null;
+    userName: string | null;
+    userRole: string | null;
+    actionLabel: string;
+    timestamp: string;
+    requestBody: Record<string, any> | null;
+    metadata: Record<string, any> | null;
+}
+
 export interface CouponFilters {
     stationId?: number;
     statut?: 'pending' | 'washing' | 'done' | 'paid';
     page?: number;
     limit?: number;
+    startDate?: string;
+    endDate?: string;
 }

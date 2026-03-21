@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/sequelize';
+import { Op } from 'sequelize';
 import { User } from '../users/models/user.model.js';
 import { Affectation } from '../users/models/affectation.model.js';
 import { AffectationStatus } from '../common/constants/status.enum.js';
@@ -21,7 +22,9 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
-    const user = await this.userModel.findOne({ where: { email } });
+    const user = await this.userModel.findOne({
+      where: { email: { [Op.iLike]: email.trim() } },
+    });
 
     if (!user) {
       throw new UnauthorizedException('Identifiants incorrects');

@@ -176,6 +176,33 @@ export class CommercialService {
     return registration;
   }
 
+  async confirmRegistrationById(
+    registrationId: number,
+    vehicleId: number,
+    couponId?: number,
+  ) {
+    const registration = await this.registrationModel.findOne({
+      where: { id: registrationId, confirmed: false },
+    });
+
+    if (!registration) return null;
+
+    registration.confirmed = true;
+    registration.vehicleId = vehicleId;
+    if (couponId) registration.couponId = couponId;
+    await registration.save();
+
+    const vehicle = await this.vehicleModel.findByPk(vehicleId);
+    if (vehicle?.clientId) {
+      await this.clientModel.update(
+        { commercialId: registration.commercialId },
+        { where: { id: vehicle.clientId, commercialId: null } },
+      );
+    }
+
+    return registration;
+  }
+
   // ─── Portefeuille clients ────────────────────────────────────
 
   async getPortfolio(commercialId: number) {

@@ -7,8 +7,8 @@ export const paiementsApi = {
         return response.data;
     },
 
-    getSummary: async (stationId: number, date?: string): Promise<CaisseSummary> => {
-        const response = await apiClient.get<CaisseSummary>('/caisse/summary', { params: { stationId, date } });
+    getSummary: async (stationId: number, date?: string, startDate?: string, endDate?: string): Promise<CaisseSummary> => {
+        const response = await apiClient.get<CaisseSummary>('/caisse/summary', { params: { stationId, date, startDate, endDate } });
         return response.data;
     },
 

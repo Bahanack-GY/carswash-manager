@@ -68,4 +68,5 @@ export interface CreateNouveauLavageDto {
     extrasIds?: number[];
     washerIds?: number[];
     promotionId?: number;
+    linkedProspectId?: number;
 }

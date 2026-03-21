@@ -16,9 +16,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { WashOperationsService } from './wash-operations.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { CreateCouponDto } from './dto/create-coupon.dto.js';
 import { UpdateCouponStatusDto } from './dto/update-coupon-status.dto.js';
 import { AssignWashersDto } from './dto/assign-washers.dto.js';
+import { AddServicesToCouponDto } from './dto/add-services-to-coupon.dto.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { CouponStatus } from '../common/constants/status.enum.js';
 
@@ -26,7 +28,10 @@ import { CouponStatus } from '../common/constants/status.enum.js';
 @ApiBearerAuth()
 @Controller('coupons')
 export class CouponsController {
-  constructor(private readonly washOpsService: WashOperationsService) {}
+  constructor(
+    private readonly washOpsService: WashOperationsService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -56,18 +61,24 @@ export class CouponsController {
     type: Number,
     description: 'Nombre de résultats par page',
   })
+  @ApiQuery({ name: 'startDate', required: false, type: String, description: 'Date début (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'endDate', required: false, type: String, description: 'Date fin (YYYY-MM-DD)' })
   @ApiResponse({ status: 200, description: 'Liste paginée des coupons' })
   async findAll(
     @Query('stationId') stationId?: number,
     @Query('statut') statut?: CouponStatus,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     return this.washOpsService.findAllCoupons({
       stationId,
       statut,
       page,
       limit,
+      startDate,
+      endDate,
     });
   }
 
@@ -114,15 +125,30 @@ export class CouponsController {
 
   @Patch(':id/washers')
   @ApiOperation({ summary: 'Assigner des laveurs à un coupon' })
-  @ApiResponse({
-    status: 200,
-    description: 'Laveurs assignés avec succès',
-  })
+  @ApiResponse({ status: 200, description: 'Laveurs assignés avec succès' })
   @ApiResponse({ status: 404, description: 'Coupon introuvable' })
   async assignWashers(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AssignWashersDto,
   ) {
     return this.washOpsService.assignWashers(id, dto);
+  }
+
+  @Patch(':id/services')
+  @ApiOperation({ summary: 'Ajouter des services à un coupon en cours de lavage' })
+  @ApiResponse({ status: 200, description: 'Services ajoutés avec succès' })
+  @ApiResponse({ status: 404, description: 'Coupon introuvable ou non en cours de lavage' })
+  async addServices(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddServicesToCouponDto,
+  ) {
+    return this.washOpsService.addServicesToCoupon(id, dto);
+  }
+
+  @Get(':id/history')
+  @ApiOperation({ summary: 'Historique des modifications d\'un coupon' })
+  @ApiResponse({ status: 200, description: 'Historique des modifications' })
+  async getHistory(@Param('id', ParseIntPipe) id: number) {
+    return this.auditService.findAll({ entity: 'Coupon', entityId: String(id), limit: 50 });
   }
 }

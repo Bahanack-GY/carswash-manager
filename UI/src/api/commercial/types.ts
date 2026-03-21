@@ -17,6 +17,7 @@ export interface CommercialRegistration {
     couponId: number | null;
     createdAt: string;
     updatedAt: string;
+    commercial?: { id: number; nom: string; prenom: string };
 }
 
 export interface RegisterVehicleDto {

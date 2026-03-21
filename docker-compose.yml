@@ -1,32 +1,6 @@
 version: '3.8'
 
 services:
-  nginx-proxy:
-    image: nginxproxy/nginx-proxy
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - certs:/etc/nginx/certs
-      - vhost:/etc/nginx/vhost.d
-      - html:/usr/share/nginx/html
-      - /var/run/docker.sock:/tmp/docker.sock:ro
-    restart: always
-
-  acme-companion:
-    image: nginxproxy/acme-companion
-    environment:
-      - DEFAULT_EMAIL=admin@domainname.com
-    volumes:
-      - certs:/etc/nginx/certs
-      - vhost:/etc/nginx/vhost.d
-      - html:/usr/share/nginx/html
-      - acme:/etc/acme.sh
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    depends_on:
-      - nginx-proxy
-    restart: always
-
   database:
     image: postgres:15-alpine
     environment:
@@ -40,6 +14,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   ollama:
     image: ollama/ollama:latest
@@ -73,16 +48,14 @@ services:
       - OLLAMA_MODEL=qwen2.5:7b
       - AI_DB_USER=ai_chatbot_user
       - AI_DB_PASSWORD=ai_chatbot_password
-      # Variables for nginx-proxy auto SSL
-      - VIRTUAL_HOST=${API_DOMAIN:-api.domainname.com}
-      - LETSENCRYPT_HOST=${API_DOMAIN:-api.domainname.com}
-    expose:
-      - "3001"
+    ports:
+      - "127.0.0.1:3091:3001"
     depends_on:
       database:
         condition: service_healthy
       ollama:
         condition: service_started
+    restart: unless-stopped
 
   ui:
     build:
@@ -90,19 +63,13 @@ services:
       dockerfile: Dockerfile
       args:
         # This MUST be the HTTPS address!
-        - VITE_API_URL=${VITE_API_URL:-https://api.domainname.com/api}
-    environment:
-      - VIRTUAL_HOST=${UI_DOMAIN:-domainname.com}
-      - LETSENCRYPT_HOST=${UI_DOMAIN:-domainname.com}
-    expose:
-      - "80"
+        - VITE_API_URL=https://api-carwash.mylisapp.online/api
+    ports:
+      - "127.0.0.1:8085:80"
     depends_on:
       - server
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   ollama_data:
-  certs:
-  vhost:
-  html:
-  acme:

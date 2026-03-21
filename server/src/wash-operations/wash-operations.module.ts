@@ -21,10 +21,12 @@ import { CouponsController } from './coupons.controller.js';
 import { WashOperationsService } from './wash-operations.service.js';
 import { DefaultServicesService } from './default-services.service.js';
 import { CommercialModule } from '../commercial/commercial.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 
 @Module({
   imports: [
     CommercialModule,
+    AuditModule,
     SequelizeModule.forFeature([
       TypeLavage,
       ServiceSpecial,

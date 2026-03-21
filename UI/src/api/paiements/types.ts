@@ -28,6 +28,7 @@ export interface CaisseSummary {
     totalDepenses: number;
     solde: number;
     nombreTransactions: number;
+    parMethode: Record<string, number>;
     stationId: number;
     date: string;
 }

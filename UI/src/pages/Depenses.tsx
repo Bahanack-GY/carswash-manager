@@ -1,15 +1,16 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowUpRight, Plus, Search, X, Upload, Paperclip,
   CheckCircle2, TrendingDown, Hash, Crown, FileText,
-  ChevronLeft, ChevronRight, Loader2,
+  ChevronLeft, ChevronRight, Loader2, Calendar,
 } from '@/lib/icons'
 import { usePaiements, useCreatePaiement, useCaisseSummary } from '@/api/paiements'
 import { paiementsApi } from '@/api/paiements/api'
 import type { Paiement, CreatePaiementDto, TransactionFilters } from '@/api/paiements/types'
 import { useAuth } from '@/contexts/AuthContext'
 import toast from 'react-hot-toast'
+import { type Period, PERIOD_LABELS, PERIODS, fmtDate, getPeriodRange } from '@/lib/period'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -83,10 +84,17 @@ export default function Depenses() {
   /* State */
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [period, setPeriod] = useState<Period>('today')
+  const [customStart, setCustomStart] = useState(fmtDate(new Date()))
+  const [customEnd, setCustomEnd] = useState(fmtDate(new Date()))
   const [page, setPage] = useState(1)
   const [isModalOpen, setIsModalOpen] = useState(false)
+
+  const { startDate, endDate } = useMemo(
+    () => getPeriodRange(period, customStart, customEnd),
+    [period, customStart, customEnd],
+  )
+  useEffect(() => { setPage(1) }, [startDate, endDate])
 
   /* Form state */
   const [formMontant, setFormMontant] = useState('')
@@ -100,20 +108,13 @@ export default function Depenses() {
 
   /* Queries */
   const stationId = selectedStationId || 0
-  const filters: TransactionFilters = {
-    stationId,
-    type: 'expense',
-    page,
-    limit: 15,
-    ...(startDate ? { startDate } : {}),
-    ...(endDate ? { endDate } : {}),
-  }
+  const filters: TransactionFilters = { stationId, type: 'expense', page, limit: 15, startDate, endDate }
   const { data: paiementsData, isLoading, isError } = usePaiements(filters)
-  const { data: summaryData } = useCaisseSummary(stationId)
+  const { data: summaryData } = useCaisseSummary(stationId, startDate, endDate)
   const createPaiement = useCreatePaiement()
 
-  /* All expenses for stats (current page data) */
-  const { data: allExpensesData } = usePaiements({ stationId, type: 'expense', limit: 1000, page: 1 })
+  /* All expenses for the period (for stats) */
+  const { data: allExpensesData } = usePaiements({ stationId, type: 'expense', limit: 1000, page: 1, startDate, endDate })
   const allExpenses: Paiement[] = allExpensesData?.data ?? []
 
   const expenses: Paiement[] = paiementsData?.data ?? []
@@ -132,7 +133,7 @@ export default function Depenses() {
   /* Computed stats */
   const stats = useMemo(() => {
     const totalDepenses = Number(summaryData?.totalDepenses) || 0
-    const count = allExpenses.length
+    const count = totalCount
 
     // Most common category
     const categoryCounts: Record<string, number> = {}
@@ -149,7 +150,7 @@ export default function Depenses() {
     const highest = allExpenses.reduce((max, p) => Math.max(max, Number(p.montant) || 0), 0)
 
     return { totalDepenses, count, topCatLabel, highest }
-  }, [summaryData, allExpenses])
+  }, [summaryData, allExpenses, totalCount])
 
   const summaryCards = [
     { label: 'Total dépenses', value: `${formatMontant(stats.totalDepenses)} F`, icon: TrendingDown, accent: 'bg-red-500/10 text-red-600' },
@@ -276,33 +277,42 @@ export default function Depenses() {
           ))}
         </div>
 
+        {/* ── Period selector ──────────────────────── */}
+        <motion.div variants={rise} className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-1.5 bg-panel border border-edge rounded-xl p-1 shadow-sm flex-wrap">
+            <Calendar className="w-4 h-4 text-ink-muted ml-2" />
+            {PERIODS.map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  period === p ? 'bg-red-500 text-white shadow-sm' : 'text-ink-muted hover:text-ink hover:bg-raised'
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' && (
+            <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2">
+              <input type="date" value={customStart} max={customEnd} onChange={e => setCustomStart(e.target.value)}
+                className="px-3 py-1.5 bg-panel border border-edge rounded-xl text-sm text-ink outline-none focus:border-red-500/40 transition-colors" />
+              <span className="text-xs text-ink-muted">→</span>
+              <input type="date" value={customEnd} min={customStart} onChange={e => setCustomEnd(e.target.value)}
+                className="px-3 py-1.5 bg-panel border border-edge rounded-xl text-sm text-ink outline-none focus:border-red-500/40 transition-colors" />
+            </motion.div>
+          )}
+        </motion.div>
+
         {/* ── Filters ─────────────────────────────── */}
-        <motion.div variants={rise} className="flex flex-col lg:flex-row gap-3">
-          {/* Search */}
-          <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-4 py-2.5 flex-1 shadow-sm focus-within:border-red-500/40 transition-colors">
+        <motion.div variants={rise}>
+          <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-4 py-2.5 shadow-sm focus-within:border-red-500/40 transition-colors">
             <Search className="w-4 h-4 text-ink-muted" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Rechercher par description ou référence..."
               className="bg-transparent text-sm text-ink placeholder-ink-muted outline-none flex-1"
-            />
-          </div>
-
-          {/* Date range */}
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => { setStartDate(e.target.value); setPage(1) }}
-              className="px-3 py-2 bg-panel border border-edge rounded-xl text-sm text-ink outline-none focus:border-red-500/40 transition-colors shadow-sm"
-            />
-            <span className="text-ink-muted text-xs">à</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => { setEndDate(e.target.value); setPage(1) }}
-              className="px-3 py-2 bg-panel border border-edge rounded-xl text-sm text-ink outline-none focus:border-red-500/40 transition-colors shadow-sm"
             />
           </div>
         </motion.div>

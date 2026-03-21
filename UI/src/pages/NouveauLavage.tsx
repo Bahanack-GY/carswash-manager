@@ -267,6 +267,20 @@ export default function NouveauLavage() {
     }
   }, [applicablePromotions])
 
+  // ── Prospect auto-detection in "new" mode ───────────────────
+  const matchedProspect = useMemo(() => {
+    if (clientMode !== 'new' || pendingProspects.length === 0) return null
+    const plate = vPlate.trim().toLowerCase()
+    const phone = newPhone.trim()
+    const name = newName.trim().toLowerCase()
+    return pendingProspects.find((p) => {
+      if (plate && p.immatriculation?.toLowerCase() === plate) return true
+      if (phone && p.prospectTelephone && p.prospectTelephone.replace(/\s/g, '') === phone.replace(/\s/g, '')) return true
+      if (name.length >= 3 && p.prospectNom?.toLowerCase().includes(name)) return true
+      return false
+    }) ?? null
+  }, [clientMode, pendingProspects, vPlate, newPhone, newName])
+
   const selectedClientRecord = clientsList.find(c => c.id === selectedClientId)
   const clientNameDisplay = isNewClient ? newName : selectedClientRecord?.nom ?? ''
   const clientPhoneDisplay = isNewClient ? newPhone : selectedClientRecord?.contact ?? ''
@@ -286,7 +300,7 @@ export default function NouveauLavage() {
     switch (step) {
       case 0: return washIds.length > 0
       case 1: {
-        const clientOk = isNewClient ? (newName.trim() !== '' && newPhone.trim() !== '') : selectedClientId !== null
+        const clientOk = isNewClient ? newName.trim() !== '' : selectedClientId !== null
         const vehicleOk = isNewVehicle ? vPlate.trim() !== '' : selectedVehicleId !== null
         return clientOk && vehicleOk
       }
@@ -352,6 +366,7 @@ export default function NouveauLavage() {
         date: new Date().toISOString().split('T')[0],
         etatLieu: etatLieuStr,
         promotionId: appliedPromotionId ?? undefined,
+        linkedProspectId: matchedProspect?.id ?? undefined,
       })
 
       // Stay on step 4 — show real coupon number
@@ -795,13 +810,31 @@ export default function NouveauLavage() {
                           )}
                         </div>
                       ) : (
+                        <div className="space-y-3">
+                          {matchedProspect && (
+                            <div className="flex items-start gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                              <span className="text-amber-500 mt-0.5 shrink-0 text-base">⚡</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Prospect reconnu</p>
+                                <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+                                  Ce client correspond au prospect <span className="font-medium">{matchedProspect.prospectNom}</span> enregistré par{' '}
+                                  <span className="font-medium">
+                                    {matchedProspect.commercial
+                                      ? `${matchedProspect.commercial.prenom} ${matchedProspect.commercial.nom}`
+                                      : `Commercial #${matchedProspect.commercialId}`}
+                                  </span>.
+                                  La commission sera attribuée automatiquement.
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-medium text-ink-light mb-1.5">Nom complet *</label>
                             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nom et prénom" className={inputCls} />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-ink-light mb-1.5">Téléphone *</label>
+                            <label className="block text-xs font-medium text-ink-light mb-1.5">Téléphone</label>
                             <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+221 7X XXX XXXX" className={inputCls} />
                           </div>
                           <div>
@@ -814,6 +847,7 @@ export default function NouveauLavage() {
                             </label>
                             <input value={newQuartier} onChange={(e) => setNewQuartier(e.target.value)} placeholder="Plateau, Almadies..." className={inputCls} />
                           </div>
+                        </div>
                         </div>
                       )}
                     </div>

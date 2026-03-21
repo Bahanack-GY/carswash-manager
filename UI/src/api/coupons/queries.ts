@@ -4,6 +4,7 @@ import type {
     CreateCouponDto,
     UpdateCouponStatusDto,
     AssignWashersDto,
+    AddServicesToCouponDto,
     CouponFilters
 } from './types';
 
@@ -73,5 +74,25 @@ export const useAssignWashers = () => {
             queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.detail(variables.id) });
             queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.myAssigned() });
         },
+    });
+};
+
+export const useAddServicesToCoupon = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (args: { id: number; data: AddServicesToCouponDto }) => couponsApi.addServices(args),
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.detail(variables.id) });
+            queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.lists() });
+        },
+    });
+};
+
+export const useCouponHistory = (id: number) => {
+    return useQuery({
+        queryKey: [...COUPONS_KEYS.detail(id), 'history'],
+        queryFn: () => couponsApi.getHistory(id),
+        enabled: !!id,
     });
 };

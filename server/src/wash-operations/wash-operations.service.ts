@@ -24,6 +24,7 @@ import { UpdateFichePisteDto } from './dto/update-fiche-piste.dto.js';
 import { CreateCouponDto } from './dto/create-coupon.dto.js';
 import { UpdateCouponStatusDto } from './dto/update-coupon-status.dto.js';
 import { AssignWashersDto } from './dto/assign-washers.dto.js';
+import { AddServicesToCouponDto } from './dto/add-services-to-coupon.dto.js';
 import { CreateNouveauLavageDto } from './dto/create-nouveau-lavage.dto.js';
 import {
   FichePisteStatus,
@@ -286,6 +287,8 @@ export class WashOperationsService {
     statut?: CouponStatus;
     page?: number;
     limit?: number;
+    startDate?: string;
+    endDate?: string;
   }) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -301,6 +304,13 @@ export class WashOperationsService {
 
     if (query.statut) {
       couponWhere.statut = query.statut;
+    }
+
+    if (query.startDate && query.endDate) {
+      couponWhere.updatedAt = {
+        [Op.gte]: new Date(`${query.startDate}T00:00:00`),
+        [Op.lte]: new Date(`${query.endDate}T23:59:59.999`),
+      };
     }
 
     const { rows: data, count: total } =
@@ -536,6 +546,67 @@ export class WashOperationsService {
     return this.findOneCoupon(couponId);
   }
 
+  async addServicesToCoupon(id: number, dto: AddServicesToCouponDto) {
+    const coupon = await this.couponModel.findByPk(id, {
+      include: [{ model: FichePiste, include: [{ model: ServiceSpecial }] }],
+    });
+    if (!coupon) throw new NotFoundException(`Coupon #${id} introuvable`);
+    if (coupon.statut !== CouponStatus.Washing) {
+      throw new NotFoundException('Impossible de modifier un coupon qui n\'est pas en cours de lavage');
+    }
+
+    const fiche = coupon.fichePiste;
+    const isCatB = false; // vehicleCategory not stored on fiche; default to A
+
+    // Add extras
+    if (dto.extrasIds && dto.extrasIds.length > 0) {
+      const existingExtrasIds = (fiche.extras ?? []).map((e) => e.id);
+      const newExtrasIds = dto.extrasIds.filter((eid) => !existingExtrasIds.includes(eid));
+      if (newExtrasIds.length > 0) {
+        await this.ficheExtrasModel.bulkCreate(
+          newExtrasIds.map((serviceSpecialId) => ({ fichePisteId: fiche.id, serviceSpecialId })) as any,
+        );
+      }
+    }
+
+    // Add wash types (stored as additional extras via pricing only — update typeLavageId if no primary yet)
+    // Recalculate montantTotal from scratch
+    const updatedFiche = await this.fichePisteModel.findByPk(fiche.id, {
+      include: [{ model: ServiceSpecial }, { model: TypeLavage }],
+    });
+    const allExtrasIds = (updatedFiche!.extras ?? []).map((e) => e.id);
+    let newTotal = 0;
+
+    // Wash type price
+    const typeLavageIds: number[] = [];
+    if (updatedFiche!.typeLavageId) typeLavageIds.push(updatedFiche!.typeLavageId);
+    if (dto.typeLavageIds && dto.typeLavageIds.length > 0) {
+      for (const tid of dto.typeLavageIds) {
+        if (!typeLavageIds.includes(tid)) typeLavageIds.push(tid);
+      }
+    }
+    if (typeLavageIds.length > 0) {
+      const washTypes = await this.typeLavageModel.findAll({ where: { id: { [Op.in]: typeLavageIds } } });
+      newTotal += washTypes.reduce((sum, t) => {
+        return sum + (isCatB && t.prixCatB != null ? Number(t.prixCatB) : Number(t.prixBase ?? 0));
+      }, 0);
+    }
+
+    // Extras price
+    if (allExtrasIds.length > 0) {
+      const extras = await this.serviceSpecialModel.findAll({ where: { id: { [Op.in]: allExtrasIds } } });
+      newTotal += extras.reduce((sum, e) => {
+        return sum + (isCatB && e.prixCatB != null ? Number(e.prixCatB) : Number(e.prix ?? 0));
+      }, 0);
+    }
+
+    // Apply remise if any
+    const remise = Number(coupon.remise) || 0;
+    await coupon.update({ montantTotal: Math.max(0, newTotal - remise) });
+
+    return this.findOneCoupon(id);
+  }
+
   async findMyAssigned(userId: number) {
     const couponIds = await this.couponWashersModel.findAll({
       where: { userId },
@@ -726,7 +797,15 @@ export class WashOperationsService {
       await transaction.commit();
 
       // 7. Auto-confirm commercial registration if the vehicle plate was prospected
-      if (dto.vehicleId) {
+      if (dto.linkedProspectId) {
+        // Explicit link: confirm by registration ID (matches by phone/name too)
+        await this.commercialService.confirmRegistrationById(
+          dto.linkedProspectId,
+          dto.vehicleId,
+          coupon.id,
+        );
+      } else if (dto.vehicleId) {
+        // Fallback: match by plate
         const vehicle = await this.vehicleModel.findByPk(dto.vehicleId);
         if (vehicle?.immatriculation) {
           await this.commercialService.confirmRegistrationByPlate(

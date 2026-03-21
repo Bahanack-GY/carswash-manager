@@ -91,4 +91,12 @@ export class CreateNouveauLavageDto {
   @IsString()
   @IsIn(['A', 'B'])
   vehicleCategory?: 'A' | 'B';
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: "ID de la commercial_registration à confirmer (prospect lié manuellement)",
+  })
+  @IsOptional()
+  @IsInt()
+  linkedProspectId?: number;
 }

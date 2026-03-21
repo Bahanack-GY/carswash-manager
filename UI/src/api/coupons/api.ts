@@ -5,6 +5,8 @@ import type {
     CreateCouponDto,
     UpdateCouponStatusDto,
     AssignWashersDto,
+    AddServicesToCouponDto,
+    CouponEditHistory,
     CouponFilters
 } from './types';
 
@@ -37,5 +39,15 @@ export const couponsApi = {
     assignWashers: async ({ id, data }: { id: number; data: AssignWashersDto }): Promise<Coupon> => {
         const response = await apiClient.patch<Coupon>(`/coupons/${id}/washers`, data);
         return response.data;
-    }
+    },
+
+    addServices: async ({ id, data }: { id: number; data: AddServicesToCouponDto }): Promise<Coupon> => {
+        const response = await apiClient.patch<Coupon>(`/coupons/${id}/services`, data);
+        return response.data;
+    },
+
+    getHistory: async (id: number): Promise<{ data: CouponEditHistory[] }> => {
+        const response = await apiClient.get(`/coupons/${id}/history`);
+        return response.data;
+    },
 };

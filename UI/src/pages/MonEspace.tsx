@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   Car, TrendingUp, Award, Clock, CheckCircle2, Loader2,
@@ -6,6 +7,16 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/axios'
+import { getPeriodRange, fmtDate } from '@/lib/period'
+
+type FilterPeriod = 'today' | 'week' | 'month' | 'year'
+const FILTER_LABELS: Record<FilterPeriod, string> = {
+  today: "Aujourd'hui",
+  week: 'Cette semaine',
+  month: 'Ce mois',
+  year: 'Cette année',
+}
+const FILTER_PERIODS: FilterPeriod[] = ['today', 'week', 'month', 'year']
 
 // ── Brand palette ─────────────────────────────────────────────────────────
 const NAVY = '#283852'
@@ -16,7 +27,7 @@ const WASH = '#e3f6f6'
 interface MyCoupon {
   id: number
   numero: string
-  statut: 'pending' | 'washing' | 'done'
+  statut: 'pending' | 'washing' | 'done' | 'paid'
   montantTotal: number
   createdAt: string
   fichePiste?: {
@@ -37,6 +48,7 @@ const STATUS = {
   pending: { label: 'En attente', bg: 'rgba(160,96,0,0.1)',     color: '#a06000', dot: '#f59e0b', ping: false },
   washing: { label: 'En cours',   bg: 'rgba(51,203,204,0.12)',  color: TEAL,      dot: TEAL,      ping: true  },
   done:    { label: 'Terminé',    bg: 'rgba(15,122,74,0.1)',    color: '#0f7a4a', dot: '#22c55e', ping: false },
+  paid:    { label: 'Terminé',    bg: 'rgba(15,122,74,0.1)',    color: '#0f7a4a', dot: '#22c55e', ping: false },
 } as const
 
 // ── Animation variants ────────────────────────────────────────────────────
@@ -50,7 +62,7 @@ const rise = {
 }
 
 // ── Reusable status badge ─────────────────────────────────────────────────
-function StatusBadge({ statut }: { statut: 'pending' | 'washing' | 'done' }) {
+function StatusBadge({ statut }: { statut: 'pending' | 'washing' | 'done' | 'paid' }) {
   const cfg = STATUS[statut] ?? STATUS.pending
   return (
     <span
@@ -73,6 +85,7 @@ function StatusBadge({ statut }: { statut: 'pending' | 'washing' | 'done' }) {
 // ── Page ──────────────────────────────────────────────────────────────────
 export default function MonEspace() {
   const { user } = useAuth()
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('today')
 
   const { data: coupons = [], isLoading: couponsLoading } = useQuery<MyCoupon[]>({
     queryKey: ['my-coupons'],
@@ -92,15 +105,32 @@ export default function MonEspace() {
     enabled: !!user,
   })
 
-  const today     = new Date().toISOString().slice(0, 10)
-  const todayPerf = performances.find((p) => p.date === today)
-  const totalDone = coupons.filter((c) => c.statut === 'done').length
-  const inProgress = coupons.filter((c) => c.statut === 'washing').length
-  const totalBonus = performances.reduce((sum, p) => sum + Number(p.bonusEstime ?? 0), 0)
+  const today = fmtDate(new Date())
+
+  const { startDate: filterStart, endDate: filterEnd } = useMemo(
+    () => getPeriodRange(filterPeriod, '', ''),
+    [filterPeriod],
+  )
+
+  const filteredCoupons = useMemo(() => {
+    return coupons.filter((c) => {
+      const d = c.createdAt.slice(0, 10)
+      return d >= filterStart && d <= filterEnd
+    })
+  }, [coupons, filterStart, filterEnd])
+
+  const filteredPerfs = useMemo(() => {
+    return performances.filter((p) => p.date >= filterStart && p.date <= filterEnd)
+  }, [performances, filterStart, filterEnd])
+
+  const todayPerf  = performances.find((p) => p.date === today)
+  const totalDone  = filteredPerfs.reduce((sum, p) => sum + (Number(p.vehiculesLaves) || 0), 0)
+  const inProgress = filteredCoupons.filter((c) => c.statut === 'washing').length
+  const totalBonus = filteredPerfs.reduce((sum, p) => sum + Number(p.bonusEstime ?? 0), 0)
   const initials   = user ? `${user.prenom[0]}${user.nom[0]}`.toUpperCase() : '?'
 
-  const activeCoupons    = coupons.filter((c) => c.statut !== 'done')
-  const completedCoupons = coupons.filter((c) => c.statut === 'done')
+  const activeCoupons    = filteredCoupons.filter((c) => c.statut !== 'done' && c.statut !== 'paid')
+  const completedCoupons = filteredCoupons.filter((c) => c.statut === 'done' || c.statut === 'paid')
 
   // Chart data: last 7 days, oldest → newest
   const chartPerfs = [...performances]
@@ -203,6 +233,24 @@ export default function MonEspace() {
         </div>
       </motion.div>
 
+      {/* ── Period filter ──────────────────────────────── */}
+      <motion.div variants={rise} className="flex items-center gap-2 flex-wrap">
+        {FILTER_PERIODS.map((p) => (
+          <button
+            key={p}
+            onClick={() => setFilterPeriod(p)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold font-body transition-all ${
+              filterPeriod === p
+                ? 'text-white shadow-sm'
+                : 'bg-panel border border-edge text-ink-muted hover:text-ink hover:border-outline'
+            }`}
+            style={filterPeriod === p ? { background: TEAL, color: NAVY } : {}}
+          >
+            {FILTER_LABELS[p]}
+          </button>
+        ))}
+      </motion.div>
+
       {/* ── Stats row ──────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {([
@@ -219,14 +267,14 @@ export default function MonEspace() {
             accent: { bg: 'rgba(51,203,204,0.1)', color: TEAL },
           },
           {
-            label: "Frais de service aujourd'hui",
-            value: `${(todayPerf?.bonusEstime ?? 0).toLocaleString()} FCFA`,
+            label: `Frais de service — ${FILTER_LABELS[filterPeriod]}`,
+            value: `${totalBonus.toLocaleString()} FCFA`,
             icon: TrendingUp,
             accent: { bg: '#f5ecff', color: '#7020b8' },
           },
           {
-            label: 'Frais de service cumulés',
-            value: `${totalBonus.toLocaleString()} FCFA`,
+            label: 'Frais de service (total)',
+            value: `${performances.reduce((s, p) => s + Number(p.bonusEstime ?? 0), 0).toLocaleString()} FCFA`,
             icon: Award,
             accent: { bg: '#fef8e8', color: '#a06000' },
           },

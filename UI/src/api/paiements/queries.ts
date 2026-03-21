@@ -5,7 +5,8 @@ import type { CreatePaiementDto, TransactionFilters } from './types';
 export const PAIEMENTS_KEYS = {
     all: ['paiements'] as const,
     lists: () => [...PAIEMENTS_KEYS.all, 'list'] as const,
-    summary: (stationId: number) => [...PAIEMENTS_KEYS.all, 'summary', stationId] as const,
+    summary: (stationId: number, startDate?: string, endDate?: string) =>
+        [...PAIEMENTS_KEYS.all, 'summary', stationId, startDate, endDate] as const,
 };
 
 export const usePaiements = (filters: TransactionFilters) => {
@@ -16,10 +17,10 @@ export const usePaiements = (filters: TransactionFilters) => {
     });
 };
 
-export const useCaisseSummary = (stationId: number, date?: string) => {
+export const useCaisseSummary = (stationId: number, startDate?: string, endDate?: string) => {
     return useQuery({
-        queryKey: [...PAIEMENTS_KEYS.summary(stationId), date],
-        queryFn: () => paiementsApi.getSummary(stationId, date),
+        queryKey: PAIEMENTS_KEYS.summary(stationId, startDate, endDate),
+        queryFn: () => paiementsApi.getSummary(stationId, undefined, startDate, endDate),
         enabled: !!stationId,
     });
 };

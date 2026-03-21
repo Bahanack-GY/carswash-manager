@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Car, CheckCircle2, Clock, Loader2, User, Phone, Target,
@@ -7,8 +7,8 @@ import {
   Banknote, Calendar, Wallet,
 } from '@/lib/icons'
 import { useAuth } from '@/contexts/AuthContext'
+import { getPeriodRange } from '@/lib/period'
 import {
-  useCommercialToday,
   useRegisterVehicle,
   useCommercialStats,
   useCommercialPortfolio,
@@ -128,11 +128,18 @@ export default function Commercial() {
 
   const [clientPage,   setClientPage]   = useState(1)
   const [prospectPage, setProspectPage] = useState(1)
+  const [histPage,     setHistPage]     = useState(1)
+  const [statPeriod,   setStatPeriod]   = useState<'today' | 'week' | 'month' | 'year'>('today')
 
   const [commFrom, setCommFrom] = useState('')
   const [commTo,   setCommTo]   = useState('')
 
-  const { data: registrations = [], isLoading: todayLoading } = useCommercialToday()
+  const { startDate: statFrom, endDate: statTo } = useMemo(
+    () => getPeriodRange(statPeriod, '', ''),
+    [statPeriod],
+  )
+
+  const { data: registrations = [], isLoading: todayLoading } = useCommercialHistory({ from: statFrom, to: statTo })
   const { data: stats } = useCommercialStats()
   const { data: portfolio = [], isLoading: portfolioLoading } = useCommercialPortfolio()
   const { data: pendingHistory = [] } = useCommercialHistory({ status: 'pending' })
@@ -145,9 +152,10 @@ export default function Commercial() {
 
   const canSubmit = plate.trim() && prospectNom.trim() && prospectTelephone.trim()
   const goal = stats?.dailyGoal ?? 10
-  const todayTotal = stats?.todayTotal ?? registrations.length
-  const todayConfirmed = stats?.todayConfirmed ?? registrations.filter(r => r.confirmed).length
-  const conversionRate = todayTotal > 0 ? Math.round((todayConfirmed / todayTotal) * 100) : 0
+  const periodTotal     = registrations.length
+  const periodConfirmed = registrations.filter(r => r.confirmed).length
+  const todayConfirmed  = stats?.todayConfirmed ?? periodConfirmed
+  const conversionRate  = periodTotal > 0 ? Math.round((periodConfirmed / periodTotal) * 100) : 0
   const initials = user ? `${user.prenom[0]}${user.nom[0]}`.toUpperCase() : '??'
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -224,10 +232,36 @@ export default function Commercial() {
         </div>
       </motion.div>
 
+      {/* ── Period pills ─────────────────────────────── */}
+      <motion.div variants={fade} className="flex gap-1.5 flex-wrap">
+        {([
+          { key: 'today', label: "Auj." },
+          { key: 'week',  label: "Semaine" },
+          { key: 'month', label: "Mois" },
+          { key: 'year',  label: "Année" },
+        ] as const).map((p) => (
+          <button
+            key={p.key}
+            onClick={() => { setStatPeriod(p.key); setHistPage(1) }}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+              statPeriod === p.key
+                ? 'bg-blue-500/20 text-blue-400 border-blue-400/30'
+                : 'bg-raised text-ink-muted border-edge hover:text-ink'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </motion.div>
+
       {/* ── Stats row ────────────────────────────────── */}
       <motion.div variants={fade} className="flex gap-3">
-        <StatTile label="Aujourd'hui" value={todayTotal} sub="prospects" />
-        <StatTile label="Confirmés" value={todayConfirmed} sub={`${conversionRate}% taux`} accent="text-ok" />
+        <StatTile
+          label={{ today: "Aujourd'hui", week: 'Cette semaine', month: 'Ce mois', year: "Cette année" }[statPeriod]}
+          value={periodTotal}
+          sub="prospects"
+        />
+        <StatTile label="Confirmés" value={periodConfirmed} sub={`${conversionRate}% taux`} accent="text-ok" />
         <StatTile label="Portefeuille" value={portfolio.length} sub="clients" accent="text-info" />
       </motion.div>
 
@@ -424,17 +458,17 @@ export default function Commercial() {
         </form>
       </div>
 
-      {/* ── Today's feed ─────────────────────────────── */}
+      {/* ── Historique ───────────────────────────────── */}
       <div className="bg-panel border border-edge rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-divider flex items-center justify-between">
           <h3 className="font-heading font-semibold text-ink text-sm flex items-center gap-2">
             <Target className="w-4 h-4 text-ink-muted" />
-            Contacts du jour
+            Historique
           </h3>
           <div className="flex items-center gap-2">
-            {todayConfirmed > 0 && (
+            {periodConfirmed > 0 && (
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-ok-wash text-ok">
-                {todayConfirmed} confirmé{todayConfirmed > 1 ? 's' : ''}
+                {periodConfirmed} confirmé{periodConfirmed > 1 ? 's' : ''}
               </span>
             )}
             <span className="text-xs text-ink-muted bg-raised px-2.5 py-1 rounded-full">
@@ -453,66 +487,68 @@ export default function Commercial() {
               <TrendingUp className="w-6 h-6 text-ink-muted/40" />
             </div>
             <div>
-              <p className="text-sm font-medium text-ink-light">Pas encore de contacts aujourd'hui</p>
+              <p className="text-sm font-medium text-ink-light">Aucun contact sur cette période</p>
               <p className="text-xs text-ink-muted mt-0.5">Enregistrez votre premier prospect ci-dessus.</p>
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-divider">
-            {[...registrations].reverse().map((reg, i) => {
-              const prospectInitial = reg.prospectNom ? reg.prospectNom[0].toUpperCase() : '?'
-              const time = new Date(reg.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-              return (
-                <motion.div
-                  key={reg.id}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  className="px-5 py-3.5 flex items-center gap-3 hover:bg-inset/60 transition-colors"
-                >
-                  {/* Prospect avatar */}
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
-                    reg.confirmed
-                      ? 'bg-ok-wash text-ok'
-                      : 'bg-raised text-ink-muted'
-                  }`}>
-                    {prospectInitial}
-                  </div>
+          <>
+            <div className="divide-y divide-divider">
+              {[...registrations].reverse().slice((histPage - 1) * PAGE_SIZE, histPage * PAGE_SIZE).map((reg, i) => {
+                const prospectInitial = reg.prospectNom ? reg.prospectNom[0].toUpperCase() : '?'
+                const dateLabel = statPeriod === 'today'
+                  ? new Date(reg.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+                  : new Date(reg.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+                return (
+                  <motion.div
+                    key={reg.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                    className="px-5 py-3.5 flex items-center gap-3 hover:bg-inset/60 transition-colors"
+                  >
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
+                      reg.confirmed ? 'bg-ok-wash text-ok' : 'bg-raised text-ink-muted'
+                    }`}>
+                      {prospectInitial}
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-mono font-semibold text-ink tracking-wider">{reg.immatriculation}</span>
-                      {reg.vehicleType && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-raised text-ink-muted font-medium">{reg.vehicleType}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-mono font-semibold text-ink tracking-wider">{reg.immatriculation}</span>
+                        {reg.vehicleType && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-raised text-ink-muted font-medium">{reg.vehicleType}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-ink-faded truncate">
+                        {reg.prospectNom}
+                        {reg.prospectQuartier && <span className="text-ink-muted"> · {reg.prospectQuartier}</span>}
+                      </p>
+                      {(reg.vehicleBrand || reg.vehicleModele) && (
+                        <p className="text-[10px] text-ink-muted/60 truncate mt-0.5">
+                          {[reg.vehicleBrand, reg.vehicleModele, reg.vehicleColor].filter(Boolean).join(' ')}
+                        </p>
                       )}
                     </div>
-                    <p className="text-xs text-ink-faded truncate">
-                      {reg.prospectNom}
-                      {reg.prospectQuartier && <span className="text-ink-muted"> · {reg.prospectQuartier}</span>}
-                    </p>
-                    {(reg.vehicleBrand || reg.vehicleModele) && (
-                      <p className="text-[10px] text-ink-muted/60 truncate mt-0.5">
-                        {[reg.vehicleBrand, reg.vehicleModele, reg.vehicleColor].filter(Boolean).join(' ')}
-                      </p>
-                    )}
-                  </div>
 
-                  <div className="shrink-0 flex flex-col items-end gap-1">
-                    {reg.confirmed ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-ok-wash text-ok">
-                        <CheckCircle2 className="w-3 h-3" /> Venu
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-warn-wash text-warn">
-                        <Clock className="w-3 h-3" /> En attente
-                      </span>
-                    )}
-                    <span className="text-[10px] text-ink-muted">{time}</span>
-                  </div>
-                </motion.div>
-              )
-            })}
-          </div>
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      {reg.confirmed ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-ok-wash text-ok">
+                          <CheckCircle2 className="w-3 h-3" /> Venu
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-warn-wash text-warn">
+                          <Clock className="w-3 h-3" /> En attente
+                        </span>
+                      )}
+                      <span className="text-[10px] text-ink-muted">{dateLabel}</span>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+            <Pager page={histPage} total={registrations.length} onChange={setHistPage} />
+          </>
         )}
 
         {registrations.length > 0 && registrations.every(r => r.confirmed) && (

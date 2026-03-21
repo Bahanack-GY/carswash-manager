@@ -131,39 +131,66 @@ export class BillingService {
 
   // ─── Caisse ─────────────────────────────────────────────────────────
 
-  async getCaisseSummary(stationId: number, date?: string) {
-    const targetDate = date ?? new Date().toISOString().split('T')[0];
+  async getCaisseSummary(
+    stationId: number,
+    date?: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    let createdAtFilter: Record<string, any>;
+
+    const resolvedDate = date ?? new Date().toISOString().split('T')[0];
+
+    if (startDate && endDate) {
+      const start = new Date(`${startDate}T00:00:00`);
+      const end = new Date(`${endDate}T23:59:59.999`);
+      createdAtFilter = { [Op.gte]: start, [Op.lte]: end };
+    } else {
+      createdAtFilter = {
+        [Op.gte]: new Date(`${resolvedDate}T00:00:00`),
+        [Op.lt]: new Date(`${resolvedDate}T23:59:59.999`),
+      };
+    }
 
     const where: Record<string, any> = {
       stationId,
-      createdAt: {
-        [Op.gte]: new Date(`${targetDate}T00:00:00`),
-        [Op.lt]: new Date(`${targetDate}T23:59:59.999`),
-      },
+      createdAt: createdAtFilter,
     };
 
     const incomeWhere = { ...where, type: TransactionType.Income };
     const expenseWhere = { ...where, type: TransactionType.Expense };
 
-    const [incomeResult, expenseResult, nombreTransactions] = await Promise.all(
-      [
+    const methods = ['cash', 'card', 'wave', 'orange_money', 'transfer', 'bond'] as const;
+
+    const [incomeResult, expenseResult, nombreTransactions, ...methodResults] =
+      await Promise.all([
         this.paiementModel.sum('montant', { where: incomeWhere }),
         this.paiementModel.sum('montant', { where: expenseWhere }),
         this.paiementModel.count({ where }),
-      ],
-    );
+        ...methods.map((methode) =>
+          this.paiementModel.sum('montant', {
+            where: { ...incomeWhere, methode },
+          }),
+        ),
+      ]);
 
     const totalRecettes = incomeResult ?? 0;
     const totalDepenses = expenseResult ?? 0;
     const solde = totalRecettes - totalDepenses;
+
+    const parMethode: Record<string, number> = {};
+    methods.forEach((methode, i) => {
+      parMethode[methode] = methodResults[i] ?? 0;
+    });
 
     return {
       totalRecettes,
       totalDepenses,
       solde,
       nombreTransactions,
+      parMethode,
       stationId,
-      date: targetDate,
+      date: startDate && endDate ? `${startDate}/${endDate}` : resolvedDate,
     };
   }
 

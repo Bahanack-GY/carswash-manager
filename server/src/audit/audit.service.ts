@@ -43,6 +43,7 @@ export class AuditService {
   async findAll(query: {
     userId?: number;
     entity?: string;
+    entityId?: string;
     action?: string;
     stationId?: number;
     startDate?: string;
@@ -54,6 +55,7 @@ export class AuditService {
     const {
       userId,
       entity,
+      entityId,
       action,
       stationId,
       startDate,
@@ -67,6 +69,7 @@ export class AuditService {
 
     if (userId) where.userId = userId;
     if (entity) where.entity = entity;
+    if (entityId) where.entityId = entityId;
     if (action) where.action = action;
     if (stationId) where.stationId = stationId;
 
