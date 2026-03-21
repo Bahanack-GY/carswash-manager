@@ -27,7 +27,10 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor.js';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: Number(process.env.THROTTLE_LIMIT ?? 10),
+    }]),
     DatabaseModule,
     AuthModule,
     StationsModule,

@@ -18,6 +18,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         synchronize: true,
         sync: { alter: true },
         logging: false,
+        pool: {
+          min: 2,
+          max: Number(config.get('DB_POOL_MAX', '20')),
+          acquire: 30000,
+          idle: 10000,
+        },
       }),
     }),
   ],

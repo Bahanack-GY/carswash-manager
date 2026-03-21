@@ -48,6 +48,9 @@ services:
       - OLLAMA_MODEL=qwen2.5:7b
       - AI_DB_USER=ai_chatbot_user
       - AI_DB_PASSWORD=ai_chatbot_password
+      # Performance tuning (override via .env or shell env)
+      - THROTTLE_LIMIT=${THROTTLE_LIMIT:-100}
+      - DB_POOL_MAX=${DB_POOL_MAX:-20}
     ports:
       - "127.0.0.1:3091:3001"
     depends_on:

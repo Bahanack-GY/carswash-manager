@@ -10,6 +10,9 @@ import { IdempotencyInterceptor } from './common/interceptors/idempotency.interc
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // Trust X-Forwarded-For from proxies (required for correct per-IP rate limiting behind nginx / load balancers)
+  app.set('trust proxy', 1);
+
   // Serve uploaded files
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 
