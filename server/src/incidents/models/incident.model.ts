@@ -7,6 +7,7 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { Station } from '../../stations/models/station.model.js';
 import { User } from '../../users/models/user.model.js';
@@ -21,6 +22,7 @@ export class Incident extends Model {
   })
   declare id: number;
 
+  @Index
   @ForeignKey(() => Station)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare stationId: number;
@@ -42,6 +44,7 @@ export class Incident extends Model {
   })
   declare stopsActivity: boolean;
 
+  @Index
   @Column({
     type: DataType.ENUM(...Object.values(IncidentStatus)),
     defaultValue: IncidentStatus.Open,

@@ -14,6 +14,7 @@ export const useFactures = (filters?: FactureFilters) => {
     return useQuery({
         queryKey: FACTURES_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => facturesApi.findAll(filters),
+        staleTime: 60_000,
     });
 };
 

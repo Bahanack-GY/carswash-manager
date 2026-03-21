@@ -7,13 +7,20 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { Facture } from './facture.model.js';
 import { User } from '../../users/models/user.model.js';
 import { Coupon } from '../../wash-operations/models/coupon.model.js';
 import { PaymentMethod, TransactionType } from '../../common/constants/status.enum.js';
 
-@Table({ tableName: 'paiements', timestamps: true })
+@Table({
+  tableName: 'paiements',
+  timestamps: true,
+  indexes: [
+    { fields: ['stationId', 'type', 'createdAt'] },
+  ],
+})
 export class Paiement extends Model {
   @Column({
     type: DataType.INTEGER,
@@ -51,6 +58,7 @@ export class Paiement extends Model {
   @Column({ type: DataType.STRING })
   declare description: string;
 
+  @Index
   @Column({ type: DataType.INTEGER })
   declare stationId: number;
 

@@ -570,6 +570,10 @@ export class MarketingService {
     let sentCount = 0;
     let failedCount = 0;
 
+    const sentIds: number[] = [];
+    const failedInfo: Array<{ id: number; error: string }> = [];
+    const sentAt = new Date();
+
     for (const recipient of recipients) {
       // Substitute variables
       let personalizedMessage = campaign.message
@@ -583,15 +587,32 @@ export class MarketingService {
       );
 
       if (result.success) {
-        recipient.status = RecipientStatus.Sent;
-        recipient.sentAt = new Date();
+        sentIds.push(recipient.id);
         sentCount++;
       } else {
-        recipient.status = RecipientStatus.Failed;
-        recipient.error = result.error ?? 'Erreur inconnue';
+        failedInfo.push({ id: recipient.id, error: result.error ?? 'Erreur inconnue' });
         failedCount++;
       }
-      await recipient.save();
+    }
+
+    // Batch update sent recipients (1 query instead of N)
+    if (sentIds.length > 0) {
+      await this.recipientModel.update(
+        { status: RecipientStatus.Sent, sentAt },
+        { where: { id: sentIds } },
+      );
+    }
+
+    // Parallel update failed recipients
+    if (failedInfo.length > 0) {
+      await Promise.all(
+        failedInfo.map(({ id, error }) =>
+          this.recipientModel.update(
+            { status: RecipientStatus.Failed, error },
+            { where: { id } },
+          ),
+        ),
+      );
     }
 
     campaign.sentCount = sentCount;

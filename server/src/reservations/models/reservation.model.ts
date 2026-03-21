@@ -7,6 +7,7 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { Client } from '../../clients/models/client.model.js';
 import { Vehicle } from '../../clients/models/vehicle.model.js';
@@ -25,6 +26,7 @@ export class Reservation extends Model {
   @Column({ type: DataType.STRING, allowNull: false, unique: true })
   declare numero: string;
 
+  @Index
   @ForeignKey(() => Client)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare clientId: number;
@@ -33,6 +35,7 @@ export class Reservation extends Model {
   @Column({ type: DataType.INTEGER })
   declare vehicleId: number;
 
+  @Index
   @ForeignKey(() => Station)
   @Column({ type: DataType.INTEGER })
   declare stationId: number;
@@ -43,6 +46,7 @@ export class Reservation extends Model {
   @Column({ type: DataType.DATE, allowNull: false })
   declare dateHeureApport: Date;
 
+  @Index
   @Column({
     type: DataType.ENUM(...Object.values(ReservationStatus)),
     defaultValue: ReservationStatus.Pending,

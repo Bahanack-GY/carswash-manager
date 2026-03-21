@@ -14,6 +14,7 @@ export const useStations = () => {
     return useQuery({
         queryKey: STATIONS_KEYS.lists(),
         queryFn: () => stationsApi.findAll(),
+        staleTime: 5 * 60 * 1000,
     });
 };
 

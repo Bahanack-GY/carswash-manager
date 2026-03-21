@@ -10,6 +10,7 @@ import {
   HasOne,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { FichePiste } from './fiche-piste.model.js';
 import { User } from '../../users/models/user.model.js';
@@ -30,10 +31,12 @@ export class Coupon extends Model {
   @Column({ type: DataType.STRING, allowNull: false, unique: true })
   declare numero: string;
 
+  @Index
   @ForeignKey(() => FichePiste)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare fichePisteId: number;
 
+  @Index
   @Column({
     type: DataType.ENUM(...Object.values(CouponStatus)),
     defaultValue: CouponStatus.Pending,

@@ -31,6 +31,7 @@ export const useCommercialToday = () => {
         queryKey: COMMERCIAL_KEYS.today(),
         queryFn: () => commercialApi.getToday(),
         refetchInterval: 30_000,
+        refetchIntervalInBackground: false,
     });
 };
 
@@ -39,6 +40,7 @@ export const useCommercialStats = () => {
         queryKey: COMMERCIAL_KEYS.stats(),
         queryFn: () => commercialApi.getStats(),
         refetchInterval: 30_000,
+        refetchIntervalInBackground: false,
     });
 };
 
@@ -82,6 +84,7 @@ export const useCommercialPending = () => {
         queryKey: COMMERCIAL_KEYS.pending(),
         queryFn: () => commercialApi.getPending(),
         refetchInterval: 30_000,
+        refetchIntervalInBackground: false,
     });
 };
 

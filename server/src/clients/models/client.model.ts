@@ -8,6 +8,7 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { Station } from '../../stations/models/station.model.js';
 import { User } from '../../users/models/user.model.js';
@@ -23,10 +24,12 @@ export class Client extends Model {
   })
   declare id: number;
 
+  @Index
   @ForeignKey(() => Station)
   @Column({ type: DataType.INTEGER, allowNull: true })
   declare stationId: number;
 
+  @Index
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER, allowNull: true })
   declare commercialId: number | null;

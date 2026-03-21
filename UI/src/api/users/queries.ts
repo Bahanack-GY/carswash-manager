@@ -17,6 +17,7 @@ export const useUsers = (filters?: UserFilters) => {
     return useQuery({
         queryKey: USERS_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => usersApi.findAll(filters),
+        staleTime: 2 * 60 * 1000,
     });
 };
 
@@ -25,6 +26,7 @@ export const useAvailableWashers = (stationId: number) => {
         queryKey: USERS_KEYS.availableWashers(stationId),
         queryFn: () => usersApi.findAvailableWashers(stationId),
         enabled: !!stationId,
+        staleTime: 60_000,
     });
 };
 
@@ -143,6 +145,7 @@ export const useLeaderboard = (type: 'laveurs' | 'commerciaux', stationId?: numb
     return useQuery({
         queryKey: USERS_KEYS.leaderboard(type, stationId),
         queryFn: () => usersApi.getLeaderboard(type, stationId),
+        staleTime: 2 * 60 * 1000,
     });
 };
 

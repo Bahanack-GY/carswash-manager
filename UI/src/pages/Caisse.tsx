@@ -140,11 +140,11 @@ export default function Caisse() {
     { label: 'Carte bancaire', value: totalCard.toLocaleString(), unit: 'FCFA', icon: CreditCard, accent: 'bg-blue-500/10 text-info', trend: '' },
   ]
 
-  const filtered = paiementsList.filter((t) => 
-    t.description?.toLowerCase().includes(search.toLowerCase()) || 
-    t.referenceExterne?.toLowerCase().includes(search.toLowerCase()) || 
+  const filtered = useMemo(() => paiementsList.filter((t) =>
+    t.description?.toLowerCase().includes(search.toLowerCase()) ||
+    t.referenceExterne?.toLowerCase().includes(search.toLowerCase()) ||
     t.id.toString().includes(search)
-  )
+  ), [paiementsList, search])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

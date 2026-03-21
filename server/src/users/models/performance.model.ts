@@ -7,11 +7,18 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { User } from './user.model.js';
 import { Station } from '../../stations/models/station.model.js';
 
-@Table({ tableName: 'performances', timestamps: true })
+@Table({
+  tableName: 'performances',
+  timestamps: true,
+  indexes: [
+    { fields: ['userId', 'stationId', 'date'] },
+  ],
+})
 export class Performance extends Model {
   @Column({
     type: DataType.INTEGER,
@@ -20,14 +27,17 @@ export class Performance extends Model {
   })
   declare id: number;
 
+  @Index
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare userId: number;
 
+  @Index
   @ForeignKey(() => Station)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare stationId: number;
 
+  @Index
   @Column({ type: DataType.DATEONLY, allowNull: false })
   declare date: string;
 

@@ -7,6 +7,7 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { User } from './user.model.js';
 import { Role } from '../../common/constants/roles.enum.js';
@@ -20,6 +21,7 @@ export class Promotion extends Model {
   })
   declare id: number;
 
+  @Index
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare userId: number;

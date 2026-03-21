@@ -22,6 +22,7 @@ export const useClients = (filters?: ClientFilters) => {
     return useQuery({
         queryKey: CLIENTS_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => clientsApi.findAll(filters),
+        staleTime: 2 * 60 * 1000,
     });
 };
 
@@ -38,6 +39,7 @@ export const useClientVehicles = (id: number) => {
         queryKey: CLIENTS_KEYS.vehicles(id),
         queryFn: () => clientsApi.getVehicles(id),
         enabled: !!id,
+        staleTime: 2 * 60 * 1000,
     });
 };
 

@@ -14,6 +14,7 @@ export const usePaiements = (filters: TransactionFilters) => {
         queryKey: [...PAIEMENTS_KEYS.lists(), filters],
         queryFn: () => paiementsApi.getTransactions(filters),
         enabled: !!filters.stationId,
+        staleTime: 60_000,
     });
 };
 
@@ -22,6 +23,7 @@ export const useCaisseSummary = (stationId: number, startDate?: string, endDate?
         queryKey: PAIEMENTS_KEYS.summary(stationId, startDate, endDate),
         queryFn: () => paiementsApi.getSummary(stationId, undefined, startDate, endDate),
         enabled: !!stationId,
+        staleTime: 60_000,
     });
 };
 

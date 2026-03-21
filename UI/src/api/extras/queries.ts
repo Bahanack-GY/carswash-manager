@@ -12,6 +12,7 @@ export const useExtras = (filters?: ExtraFilters) => {
     return useQuery({
         queryKey: EXTRAS_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => extrasApi.findAll(filters),
+        staleTime: 5 * 60 * 1000,
     });
 };
 

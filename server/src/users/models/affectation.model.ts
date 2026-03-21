@@ -7,6 +7,7 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { User } from './user.model.js';
 import { Station } from '../../stations/models/station.model.js';
@@ -21,10 +22,12 @@ export class Affectation extends Model {
   })
   declare id: number;
 
+  @Index
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare userId: number;
 
+  @Index
   @ForeignKey(() => Station)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare stationId: number;
@@ -35,6 +38,7 @@ export class Affectation extends Model {
   @Column({ type: DataType.DATEONLY })
   declare dateFin: string;
 
+  @Index
   @Column({
     type: DataType.ENUM(...Object.values(AffectationStatus)),
     defaultValue: AffectationStatus.Active,

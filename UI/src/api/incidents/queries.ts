@@ -30,7 +30,8 @@ export const useActiveIncidentsByStation = () => {
     return useQuery({
         queryKey: INCIDENTS_KEYS.activeByStation(),
         queryFn: () => incidentsApi.getActiveByStation(),
-        refetchInterval: 60000, // Refresh every minute
+        refetchInterval: 60000,
+        refetchIntervalInBackground: false,
     });
 };
 

@@ -14,6 +14,7 @@ export const useBonds = (filters?: BondFilters) => {
     return useQuery({
         queryKey: BONDS_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => bondsApi.findAll(filters),
+        staleTime: 60_000,
     });
 };
 

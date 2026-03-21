@@ -1,46 +1,49 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import Layout from '@/components/Layout'
 import ProtectedRoute from '@/components/ProtectedRoute'
-import Login from '@/pages/Login'
-import Dashboard from '@/pages/Dashboard'
-import Reservations from '@/pages/Reservations'
-import FichesPiste from '@/pages/FichesPiste'
-import Coupons from '@/pages/Coupons'
-import CouponDetail from '@/pages/CouponDetail'
-import Caisse from '@/pages/Caisse'
-import Clients from '@/pages/Clients'
-import ClientDetail from '@/pages/ClientDetail'
-import Inventaire from '@/pages/Inventaire'
-import InventaireDetail from '@/pages/InventaireDetail'
-import Employes from '@/pages/Employes'
-import EmployeDetail from '@/pages/EmployeDetail'
-import Stations from '@/pages/Stations'
-import TypesLavage from '@/pages/TypesLavage'
-import ServicesSpeciaux from '@/pages/ServicesSpeciaux'
-import Incidents from '@/pages/Incidents'
-import NouveauLavage from '@/pages/NouveauLavage'
-import SelectStation from '@/pages/SelectStation'
-import GlobalDashboard from '@/pages/GlobalDashboard'
-import MonEspace from '@/pages/MonEspace'
-import Commercial from '@/pages/Commercial'
-import CommercialAnalytics from '@/pages/CommercialAnalytics'
-import Marketing from '@/pages/Marketing'
-import AuditLogs from '@/pages/AuditLogs'
-import BonsLavage from '@/pages/BonsLavage'
-import Depenses from '@/pages/Depenses'
 import AdminLayout from '@/components/AdminLayout'
-import AdminEmployees from '@/pages/admin/AdminEmployees'
-import AdminClients from '@/pages/admin/AdminClients'
-import AdminIncidents from '@/pages/admin/AdminIncidents'
-import Classement from '@/pages/Classement'
-import Unauthorized from '@/pages/Unauthorized'
-import Settings from '@/pages/Settings'
+
+const Login = lazy(() => import('@/pages/Login'))
+const Dashboard = lazy(() => import('@/pages/Dashboard'))
+const Reservations = lazy(() => import('@/pages/Reservations'))
+const FichesPiste = lazy(() => import('@/pages/FichesPiste'))
+const Coupons = lazy(() => import('@/pages/Coupons'))
+const CouponDetail = lazy(() => import('@/pages/CouponDetail'))
+const Caisse = lazy(() => import('@/pages/Caisse'))
+const Clients = lazy(() => import('@/pages/Clients'))
+const ClientDetail = lazy(() => import('@/pages/ClientDetail'))
+const Inventaire = lazy(() => import('@/pages/Inventaire'))
+const InventaireDetail = lazy(() => import('@/pages/InventaireDetail'))
+const Employes = lazy(() => import('@/pages/Employes'))
+const EmployeDetail = lazy(() => import('@/pages/EmployeDetail'))
+const Stations = lazy(() => import('@/pages/Stations'))
+const TypesLavage = lazy(() => import('@/pages/TypesLavage'))
+const ServicesSpeciaux = lazy(() => import('@/pages/ServicesSpeciaux'))
+const Incidents = lazy(() => import('@/pages/Incidents'))
+const NouveauLavage = lazy(() => import('@/pages/NouveauLavage'))
+const SelectStation = lazy(() => import('@/pages/SelectStation'))
+const GlobalDashboard = lazy(() => import('@/pages/GlobalDashboard'))
+const MonEspace = lazy(() => import('@/pages/MonEspace'))
+const Commercial = lazy(() => import('@/pages/Commercial'))
+const CommercialAnalytics = lazy(() => import('@/pages/CommercialAnalytics'))
+const Marketing = lazy(() => import('@/pages/Marketing'))
+const AuditLogs = lazy(() => import('@/pages/AuditLogs'))
+const BonsLavage = lazy(() => import('@/pages/BonsLavage'))
+const Depenses = lazy(() => import('@/pages/Depenses'))
+const AdminEmployees = lazy(() => import('@/pages/admin/AdminEmployees'))
+const AdminClients = lazy(() => import('@/pages/admin/AdminClients'))
+const AdminIncidents = lazy(() => import('@/pages/admin/AdminIncidents'))
+const Classement = lazy(() => import('@/pages/Classement'))
+const Unauthorized = lazy(() => import('@/pages/Unauthorized'))
+const Settings = lazy(() => import('@/pages/Settings'))
 
 export default function App() {
   return (
     <>
       <Toaster position="top-right" toastOptions={{ className: 'text-sm font-medium' }} />
+      <Suspense fallback={<div className="flex h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" /></div>}>
       <Routes>
         {/* Public */}
         <Route path="/" element={<Login />} />
@@ -212,6 +215,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </>
   )
 }

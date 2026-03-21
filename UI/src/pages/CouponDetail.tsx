@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useIdempotencyKey } from '@/lib/idempotency'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -86,6 +86,10 @@ export default function CouponDetail() {
   const [addServiceCategory, setAddServiceCategory] = useState('')
   const [pickedExtrasIds, setPickedExtrasIds] = useState<number[]>([])
   const [pickedWashIds, setPickedWashIds] = useState<number[]>([])
+
+  const extraCategories = useMemo(() =>
+    Array.from(new Set((extrasData || []).map((e: any) => e.categorie).filter(Boolean))) as string[]
+  , [extrasData])
 
   const togglePickedExtra = (id: number) =>
     setPickedExtrasIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])
@@ -446,8 +450,6 @@ export default function CouponDetail() {
                   const allWashes: any[] = washTypesData || []
                   const allExtras: any[] = extrasData || []
                   const q = addServiceSearch.toLowerCase()
-
-                  const extraCategories = Array.from(new Set(allExtras.map((e: any) => e.categorie).filter(Boolean))) as string[]
 
                   const filteredWashes = allWashes.filter(w =>
                     (!q || w.nom.toLowerCase().includes(q)) &&

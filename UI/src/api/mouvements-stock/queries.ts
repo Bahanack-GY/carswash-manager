@@ -12,6 +12,7 @@ export const useMouvementsStock = (filters?: MouvementStockFilters) => {
     return useQuery({
         queryKey: MOUVEMENTS_STOCK_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => mouvementsStockApi.findAll(filters),
+        staleTime: 2 * 60 * 1000,
     });
 };
 

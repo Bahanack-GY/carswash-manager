@@ -21,6 +21,7 @@ export const useCoupons = (filters?: CouponFilters) => {
     return useQuery({
         queryKey: COUPONS_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => couponsApi.findAll(filters),
+        staleTime: 30_000,
     });
 };
 
@@ -28,6 +29,7 @@ export const useMyAssignedCoupons = () => {
     return useQuery({
         queryKey: COUPONS_KEYS.myAssigned(),
         queryFn: () => couponsApi.findMyAssigned(),
+        staleTime: 30_000,
     });
 };
 

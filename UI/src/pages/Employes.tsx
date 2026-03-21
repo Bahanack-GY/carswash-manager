@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -53,24 +53,24 @@ export default function Employes() {
   const usersList = usersData?.data || []
   const stations = stationsList || []
 
-  const filtered = usersList.filter((e) => {
+  const filtered = useMemo(() => usersList.filter((e) => {
     const fullName = `${e.prenom} ${e.nom}`.toLowerCase()
     const matchSearch = fullName.includes(search.toLowerCase()) || e.email.toLowerCase().includes(search.toLowerCase())
     const roleObj = roleCfg[e.role]
     const matchRole = roleTab === 'Tous' || (roleObj && roleObj.label === roleTab)
     return matchSearch && matchRole
-  })
+  }), [usersList, search, roleTab])
 
-  // Derived stats
-  const totalLaveurs = usersList.filter(u => u.role === 'laveur').length
-  const totalCaissieres = usersList.filter(u => u.role === 'caissiere').length
-
-  const performanceStats = [
-    { label: 'Total employés', value: usersList.length.toString(), icon: UserCog, accent: 'bg-teal-500/10 text-accent' },
-    { label: 'Laveurs', value: totalLaveurs.toString(), icon: Car, accent: 'bg-blue-500/10 text-info' },
-    { label: 'Caissières', value: totalCaissieres.toString(), icon: Award, accent: 'bg-emerald-500/10 text-ok' },
-    { label: 'Stations', value: stations.length.toString(), icon: MapPin, accent: 'bg-amber-500/10 text-warn' },
-  ]
+  const performanceStats = useMemo(() => {
+    const totalLaveurs = usersList.filter(u => u.role === 'laveur').length
+    const totalCaissieres = usersList.filter(u => u.role === 'caissiere').length
+    return [
+      { label: 'Total employés', value: usersList.length.toString(), icon: UserCog, accent: 'bg-teal-500/10 text-accent' },
+      { label: 'Laveurs', value: totalLaveurs.toString(), icon: Car, accent: 'bg-blue-500/10 text-info' },
+      { label: 'Caissières', value: totalCaissieres.toString(), icon: Award, accent: 'bg-emerald-500/10 text-ok' },
+      { label: 'Stations', value: stations.length.toString(), icon: MapPin, accent: 'bg-amber-500/10 text-warn' },
+    ]
+  }, [usersList, stations.length])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()

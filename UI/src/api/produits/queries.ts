@@ -14,6 +14,7 @@ export const useProduits = (filters?: ProduitFilters) => {
     return useQuery({
         queryKey: PRODUITS_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => produitsApi.findAll(filters),
+        staleTime: 2 * 60 * 1000,
     });
 };
 

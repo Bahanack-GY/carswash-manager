@@ -12,6 +12,7 @@ export const useWashTypes = (filters?: WashTypeFilters) => {
     return useQuery({
         queryKey: WASH_TYPES_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => washTypesApi.findAll(filters),
+        staleTime: 5 * 60 * 1000,
     });
 };
 

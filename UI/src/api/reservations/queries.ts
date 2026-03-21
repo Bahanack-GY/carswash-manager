@@ -14,6 +14,7 @@ export const useReservations = (filters?: ReservationFilters) => {
     return useQuery({
         queryKey: RESERVATIONS_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => reservationsApi.findAll(filters),
+        staleTime: 60_000,
     });
 };
 

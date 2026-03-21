@@ -15,6 +15,7 @@ export const useFichesPiste = (filters?: FichePisteFilters) => {
         queryKey: FICHES_PISTE_KEYS.list(JSON.stringify(filters || {})),
         queryFn: () => fichesPisteApi.findAll(filters),
         placeholderData: keepPreviousData,
+        staleTime: 30_000,
     });
 };
 

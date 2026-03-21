@@ -690,23 +690,51 @@ export class WashOperationsService {
   // ─── Nouveau Lavage (combined Fiche + Coupon) ──────────────────────
 
   async createNouveauLavage(dto: CreateNouveauLavageDto) {
+    // 1. Resolve typeLavageId (multi-select: first ID is primary FK)
+    const resolvedTypeIds: number[] =
+      dto.typeLavageIds && dto.typeLavageIds.length > 0
+        ? dto.typeLavageIds
+        : dto.typeLavageId
+        ? [dto.typeLavageId]
+        : [];
+    const primaryTypeLavageId = resolvedTypeIds[0] ?? null;
+
+    const { extrasIds, washerIds, promotionId, typeLavageIds: _tIds, typeLavageId: _tId, ...ficheBase } = dto;
+    const allExtrasIds = extrasIds ? [...extrasIds] : [];
+
+    // Pre-fetch pricing data outside the serializable transaction to keep the critical section short
+    const isCatB = dto.vehicleCategory === 'B';
+    let prixBase = 0;
+    if (resolvedTypeIds.length > 0) {
+      const washTypeRecords = await this.typeLavageModel.findAll({
+        where: { id: { [Op.in]: resolvedTypeIds } },
+      });
+      prixBase = washTypeRecords.reduce((sum, t) => {
+        const price = isCatB && t.prixCatB != null ? Number(t.prixCatB) : Number(t.prixBase ?? 0);
+        return sum + price;
+      }, 0);
+    }
+
+    let extrasPrix = 0;
+    if (allExtrasIds.length > 0) {
+      const extrasRecords = await this.serviceSpecialModel.findAll({
+        where: { id: { [Op.in]: allExtrasIds } },
+      });
+      extrasPrix = extrasRecords.reduce((sum, e) => {
+        const price = isCatB && e.prixCatB != null ? Number(e.prixCatB) : Number(e.prix);
+        return sum + price;
+      }, 0);
+    }
+
+    const montantTotal = prixBase + extrasPrix;
+
     const transaction = await this.sequelize.transaction({
       isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE,
     });
 
     try {
-      // 1. Resolve typeLavageId (multi-select: first ID is primary FK)
-      const resolvedTypeIds: number[] =
-        dto.typeLavageIds && dto.typeLavageIds.length > 0
-          ? dto.typeLavageIds
-          : dto.typeLavageId
-          ? [dto.typeLavageId]
-          : [];
-      const primaryTypeLavageId = resolvedTypeIds[0] ?? null;
-
       // 2. Create FichePiste
       const ficheNumero = await this.generateFicheNumero(transaction);
-      const { extrasIds, washerIds, promotionId, typeLavageIds: _tIds, typeLavageId: _tId, ...ficheBase } = dto;
 
       const fiche = await this.fichePisteModel.create(
         { ...ficheBase, typeLavageId: primaryTypeLavageId, numero: ficheNumero } as any,
@@ -714,8 +742,6 @@ export class WashOperationsService {
       );
 
       // 3. Attach extras
-      const allExtrasIds = extrasIds ? [...extrasIds] : [];
-
       if (allExtrasIds.length > 0) {
         const extras = allExtrasIds.map((serviceSpecialId) => ({
           fichePisteId: fiche.id,
@@ -723,34 +749,6 @@ export class WashOperationsService {
         }));
         await this.ficheExtrasModel.bulkCreate(extras as any, { transaction });
       }
-
-      // 4. Calculate total — sum all selected wash types using vehicle category pricing
-      const isCatB = dto.vehicleCategory === 'B';
-      let prixBase = 0;
-      if (resolvedTypeIds.length > 0) {
-        const washTypeRecords = await this.typeLavageModel.findAll({
-          where: { id: { [Op.in]: resolvedTypeIds } },
-          transaction,
-        });
-        prixBase = washTypeRecords.reduce((sum, t) => {
-          const price = isCatB && t.prixCatB != null ? Number(t.prixCatB) : Number(t.prixBase ?? 0);
-          return sum + price;
-        }, 0);
-      }
-
-      let extrasPrix = 0;
-      if (allExtrasIds.length > 0) {
-        const extrasRecords = await this.serviceSpecialModel.findAll({
-          where: { id: { [Op.in]: allExtrasIds } },
-          transaction,
-        });
-        extrasPrix = extrasRecords.reduce((sum, e) => {
-          const price = isCatB && e.prixCatB != null ? Number(e.prixCatB) : Number(e.prix);
-          return sum + price;
-        }, 0);
-      }
-
-      const montantTotal = prixBase + extrasPrix;
 
       // 5. Apply promotion if provided
       let finalMontant = montantTotal;

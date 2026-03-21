@@ -7,6 +7,7 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { User } from '../../users/models/user.model.js';
 import { Coupon } from '../../wash-operations/models/coupon.model.js';
@@ -27,6 +28,7 @@ export class BonLavage extends Model {
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare pourcentage: number;
 
+  @Index
   @Column({ type: DataType.BOOLEAN, defaultValue: false })
   declare isUsed: boolean;
 
@@ -41,6 +43,7 @@ export class BonLavage extends Model {
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare createdById: number;
 
+  @Index
   @ForeignKey(() => Station)
   @Column({ type: DataType.INTEGER, allowNull: true })
   declare stationId: number | null;

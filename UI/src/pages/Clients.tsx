@@ -168,21 +168,22 @@ export default function Clients() {
   })
   const allClients: Client[] = statsData?.data || []
 
-  let totalSubscribers = 0
-  let totalPoints = 0
-  let totalVehicles = 0
-  allClients.forEach(c => {
-    if (Number(c.activeSubscriptionCount) > 0) totalSubscribers++
-    totalPoints += Number(c.pointsFidelite) || 0
-    totalVehicles += Number(c.vehicleCount) || 0
-  })
-
-  const summaryCards = [
-    { label: 'Total clients', value: totalClients.toLocaleString(), icon: Users, accent: 'bg-teal-500/10 text-accent' },
-    { label: 'Abonnés actifs', value: totalSubscribers.toString(), icon: CreditCard, accent: 'bg-purple-500/10 text-grape' },
-    { label: 'Véhicules', value: totalVehicles.toString(), icon: Car, accent: 'bg-amber-500/10 text-warn' },
-    { label: 'Points fidélité', value: totalPoints.toLocaleString(), icon: Award, accent: 'bg-emerald-500/10 text-ok' },
-  ]
+  const summaryCards = useMemo(() => {
+    let totalSubscribers = 0
+    let totalPoints = 0
+    let totalVehicles = 0
+    allClients.forEach(c => {
+      if (Number(c.activeSubscriptionCount) > 0) totalSubscribers++
+      totalPoints += Number(c.pointsFidelite) || 0
+      totalVehicles += Number(c.vehicleCount) || 0
+    })
+    return [
+      { label: 'Total clients', value: totalClients.toLocaleString(), icon: Users, accent: 'bg-teal-500/10 text-accent' },
+      { label: 'Abonnés actifs', value: totalSubscribers.toString(), icon: CreditCard, accent: 'bg-purple-500/10 text-grape' },
+      { label: 'Véhicules', value: totalVehicles.toString(), icon: Car, accent: 'bg-amber-500/10 text-warn' },
+      { label: 'Points fidélité', value: totalPoints.toLocaleString(), icon: Award, accent: 'bg-emerald-500/10 text-ok' },
+    ]
+  }, [allClients, totalClients])
 
   return (
     <>

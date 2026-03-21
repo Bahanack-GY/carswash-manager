@@ -7,6 +7,7 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { Produit } from './produit.model.js';
 import { User } from '../../users/models/user.model.js';
@@ -21,10 +22,12 @@ export class MouvementStock extends Model {
   })
   declare id: number;
 
+  @Index
   @ForeignKey(() => Produit)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare produitId: number;
 
+  @Index
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER })
   declare userId: number;

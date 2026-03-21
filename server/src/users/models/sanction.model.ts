@@ -7,6 +7,7 @@ import {
   BelongsTo,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { User } from './user.model.js';
 import {
@@ -23,6 +24,7 @@ export class Sanction extends Model {
   })
   declare id: number;
 
+  @Index
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare userId: number;
@@ -42,6 +44,7 @@ export class Sanction extends Model {
   @Column({ type: DataType.DATEONLY })
   declare dateFin: string;
 
+  @Index
   @Column({
     type: DataType.ENUM(...Object.values(SanctionStatus)),
     defaultValue: SanctionStatus.Active,

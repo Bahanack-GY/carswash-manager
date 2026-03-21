@@ -9,6 +9,7 @@ import {
   HasOne,
   CreatedAt,
   UpdatedAt,
+  Index,
 } from 'sequelize-typescript';
 import { Station } from '../../stations/models/station.model.js';
 import { Vehicle } from '../../clients/models/vehicle.model.js';
@@ -20,7 +21,13 @@ import { FicheExtras } from './fiche-extras.model.js';
 import { Coupon } from './coupon.model.js';
 import { FichePisteStatus } from '../../common/constants/status.enum.js';
 
-@Table({ tableName: 'fiches_piste', timestamps: true })
+@Table({
+  tableName: 'fiches_piste',
+  timestamps: true,
+  indexes: [
+    { fields: ['stationId', 'date'] },
+  ],
+})
 export class FichePiste extends Model {
   @Column({
     type: DataType.INTEGER,
@@ -32,6 +39,7 @@ export class FichePiste extends Model {
   @Column({ type: DataType.STRING, allowNull: false, unique: true })
   declare numero: string;
 
+  @Index
   @ForeignKey(() => Station)
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare stationId: number;
@@ -40,6 +48,7 @@ export class FichePiste extends Model {
   @Column({ type: DataType.INTEGER })
   declare vehicleId: number;
 
+  @Index
   @ForeignKey(() => Client)
   @Column({ type: DataType.INTEGER })
   declare clientId: number;
@@ -58,6 +67,7 @@ export class FichePiste extends Model {
   @Column({ type: DataType.TEXT })
   declare etatLieu: string;
 
+  @Index
   @Column({
     type: DataType.ENUM(...Object.values(FichePisteStatus)),
     defaultValue: FichePisteStatus.Open,
