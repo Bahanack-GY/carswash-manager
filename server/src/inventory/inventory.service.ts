@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { Op, literal } from 'sequelize';
+import { Sequelize } from 'sequelize-typescript';
+import { Op, Transaction, literal } from 'sequelize';
 import { Produit } from './models/produit.model.js';
 import { MouvementStock } from './models/mouvement-stock.model.js';
 import { Fournisseur } from './models/fournisseur.model.js';
@@ -19,6 +20,7 @@ import { MouvementType, TransactionType, PaymentMethod } from '../common/constan
 @Injectable()
 export class InventoryService {
   constructor(
+    private readonly sequelize: Sequelize,
     @InjectModel(Produit)
     private readonly produitModel: typeof Produit,
     @InjectModel(MouvementStock)
@@ -89,23 +91,26 @@ export class InventoryService {
   }
 
   async createProduit(dto: CreateProduitDto) {
-    const produit = await this.produitModel.create(dto as any);
+    return this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async (t) => {
+      const produit = await this.produitModel.create(dto as any, { transaction: t });
 
-    // If initial stock > 0 and cost price is set, create an expense
-    const initialQty = dto.quantiteStock ?? 0;
-    const prixRevient = dto.prixRevient ?? 0;
-    if (initialQty > 0 && prixRevient > 0) {
-      await this.paiementModel.create({
-        methode: PaymentMethod.Cash,
-        montant: initialQty * prixRevient,
-        type: TransactionType.Expense,
-        stationId: dto.stationId,
-        categorie: 'fournitures',
-        description: `Stock initial — ${dto.nom} (${initialQty} ${dto.unite ?? 'u.'} × ${prixRevient} FCFA)`,
-      } as any);
-    }
+      const initialQty = dto.quantiteStock ?? 0;
+      const prixRevient = dto.prixRevient ?? 0;
+      if (initialQty > 0 && prixRevient > 0) {
+        await this.paiementModel.create({
+          methode: PaymentMethod.Cash,
+          montant: initialQty * prixRevient,
+          type: TransactionType.Expense,
+          stationId: dto.stationId,
+          categorie: 'fournitures',
+          description: `Stock initial — ${dto.nom} (${initialQty} ${dto.unite ?? 'u.'} × ${prixRevient} FCFA)`,
+        } as any, { transaction: t });
+      }
 
-    return produit;
+      return produit;
+    });
   }
 
   async updateProduit(id: number, dto: UpdateProduitDto) {
@@ -170,41 +175,42 @@ export class InventoryService {
 
   async createMouvement(dto: CreateMouvementStockDto, userId: number) {
     const produit = await this.produitModel.findByPk(dto.produitId);
-
     if (!produit) {
       throw new NotFoundException(`Produit #${dto.produitId} introuvable`);
     }
 
-    const mouvement = await this.mouvementStockModel.create({
-      ...dto,
-      userId,
-    } as any);
+    return this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async (t) => {
+      const mouvement = await this.mouvementStockModel.create(
+        { ...dto, userId } as any,
+        { transaction: t },
+      );
 
-    // Auto-update product quantity based on movement type
-    switch (dto.typeMouvement) {
-      case MouvementType.Entree:
-        await produit.increment('quantiteStock', { by: dto.quantite });
-        // Auto-create expense if product has a cost price
-        if (produit.prixRevient > 0) {
-          await this.paiementModel.create({
-            methode: PaymentMethod.Cash,
-            montant: dto.quantite * produit.prixRevient,
-            type: TransactionType.Expense,
-            stationId: produit.stationId,
-            categorie: 'fournitures',
-            description: `Réapprovisionnement — ${produit.nom} (${dto.quantite} ${produit.unite ?? 'u.'} × ${produit.prixRevient} FCFA)${dto.motif ? ' — ' + dto.motif : ''}`,
-          } as any);
-        }
-        break;
-      case MouvementType.Sortie:
-        await produit.decrement('quantiteStock', { by: dto.quantite });
-        break;
-      case MouvementType.Ajustement:
-        await produit.update({ quantiteStock: dto.quantite });
-        break;
-    }
+      switch (dto.typeMouvement) {
+        case MouvementType.Entree:
+          await produit.increment('quantiteStock', { by: dto.quantite, transaction: t });
+          if (produit.prixRevient > 0) {
+            await this.paiementModel.create({
+              methode: PaymentMethod.Cash,
+              montant: dto.quantite * produit.prixRevient,
+              type: TransactionType.Expense,
+              stationId: produit.stationId,
+              categorie: 'fournitures',
+              description: `Réapprovisionnement — ${produit.nom} (${dto.quantite} ${produit.unite ?? 'u.'} × ${produit.prixRevient} FCFA)${dto.motif ? ' — ' + dto.motif : ''}`,
+            } as any, { transaction: t });
+          }
+          break;
+        case MouvementType.Sortie:
+          await produit.decrement('quantiteStock', { by: dto.quantite, transaction: t });
+          break;
+        case MouvementType.Ajustement:
+          await produit.update({ quantiteStock: dto.quantite }, { transaction: t });
+          break;
+      }
 
-    return mouvement;
+      return mouvement;
+    });
   }
 
   // ─── Fournisseurs ─────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useIdempotencyKey } from '@/lib/idempotency'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -68,6 +69,7 @@ export default function CouponDetail() {
   const updateStatus = useUpdateCouponStatus()
   const addServices = useAddServicesToCoupon()
   const createPaiement = useCreatePaiement()
+  const { idempotencyKey: payKey, resetKey: resetPayKey } = useIdempotencyKey()
   const { data: historyData } = useCouponHistory(couponId)
   const { data: washTypesData } = useWashTypes(selectedStationId ? { stationId: selectedStationId } : undefined)
   const { data: extrasData } = useExtras(selectedStationId ? { stationId: selectedStationId } : undefined)
@@ -148,7 +150,7 @@ export default function CouponDetail() {
 
   const handleStatusUpdate = (newStatus: 'washing' | 'done') => {
     updateStatus.mutate(
-      { id: coupon.id, data: { statut: newStatus } },
+      { id: coupon.id, data: { statut: newStatus }, idempotencyKey: `coupon-${coupon.id}-${newStatus}` },
       {
         onSuccess: () => {
           toast.success(newStatus === 'washing' ? 'Lavage démarré !' : 'Lavage terminé !')
@@ -159,6 +161,7 @@ export default function CouponDetail() {
   }
 
   const handlePayment = async () => {
+    const key = payKey.current
     try {
       await createPaiement.mutateAsync({
         type: 'income',
@@ -168,8 +171,10 @@ export default function CouponDetail() {
         referenceExterne: referenceExterne || coupon.numero,
         stationId: selectedStationId || fp?.stationId || 1,
         couponId: coupon.id,
+        idempotencyKey: `${key}-payment`,
       })
-      await updateStatus.mutateAsync({ id: coupon.id, data: { statut: 'paid' } })
+      await updateStatus.mutateAsync({ id: coupon.id, data: { statut: 'paid' }, idempotencyKey: `${key}-status` })
+      resetPayKey()
       setIsPaid(true)
       setPaidMethod(paymentMethod)
       toast.success('Paiement enregistré avec succès !')

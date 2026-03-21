@@ -5,7 +5,7 @@ import {
   LayoutDashboard, CalendarDays, ClipboardList, Ticket, CreditCard,
   Users, Package, UserCog, Building2, Search, Bell, LogOut,
   ChevronLeft, Menu, Plus, Sun, Moon, Star, Droplets, Sparkles, MapPin, Check, ChevronsUpDown, Clock, AlertTriangle,
-  Megaphone, BarChart3, ScrollText, Ban, Info, ShieldAlert, Zap, AlertCircle, CheckCircle2, Gift, Trophy,
+  Megaphone, BarChart3, ScrollText, Ban, Info, ShieldAlert, Zap, AlertCircle, CheckCircle2, Gift, Trophy, Settings,
 } from '@/lib/icons'
 import Logo from '@/assets/Logo.png'
 import TrophyManager from '@/components/TrophyManager'
@@ -560,13 +560,22 @@ export default function Layout() {
               )}
             </AnimatePresence>
             {!collapsed && (
-              <button
-                onClick={handleLogout}
-                className="text-white/30 hover:text-red-400 transition-colors flex-shrink-0"
-                title="Déconnexion"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <NavLink
+                  to="/settings"
+                  className="text-white/30 hover:text-white transition-colors p-1"
+                  title="Paramètres"
+                >
+                  <Settings className="w-4 h-4" />
+                </NavLink>
+                <button
+                  onClick={handleLogout}
+                  className="text-white/30 hover:text-red-400 transition-colors p-1"
+                  title="Déconnexion"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </div>
         </div>

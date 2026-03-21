@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { Op } from 'sequelize';
+import { Sequelize } from 'sequelize-typescript';
+import { Op, Transaction } from 'sequelize';
 import { CommercialRegistration } from './models/commercial-registration.model.js';
 import { Vehicle } from '../clients/models/vehicle.model.js';
 import { Client } from '../clients/models/client.model.js';
@@ -15,6 +16,7 @@ import { RegisterVehicleDto } from './dto/register-vehicle.dto.js';
 @Injectable()
 export class CommercialService {
   constructor(
+    private readonly sequelize: Sequelize,
     @InjectModel(CommercialRegistration)
     private readonly registrationModel: typeof CommercialRegistration,
     @InjectModel(Vehicle)
@@ -149,31 +151,35 @@ export class CommercialService {
     vehicleId: number,
     couponId?: number,
   ) {
-    const registration = await this.registrationModel.findOne({
-      where: {
-        immatriculation: { [Op.iLike]: plate.trim() },
-        confirmed: false,
+    return this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
+      async (t) => {
+        // SELECT FOR UPDATE prevents two concurrent lavages from confirming the same prospect
+        const registration = await this.registrationModel.findOne({
+          where: { immatriculation: { [Op.iLike]: plate.trim() }, confirmed: false },
+          order: [['createdAt', 'ASC']],
+          lock: Transaction.LOCK.UPDATE,
+          transaction: t,
+        });
+
+        if (!registration) return null;
+
+        await registration.update(
+          { confirmed: true, vehicleId, ...(couponId ? { couponId } : {}) },
+          { transaction: t },
+        );
+
+        const vehicle = await this.vehicleModel.findByPk(vehicleId, { transaction: t });
+        if (vehicle?.clientId) {
+          await this.clientModel.update(
+            { commercialId: registration.commercialId },
+            { where: { id: vehicle.clientId, commercialId: null }, transaction: t },
+          );
+        }
+
+        return registration;
       },
-      order: [['createdAt', 'ASC']],
-    });
-
-    if (!registration) return null;
-
-    registration.confirmed = true;
-    registration.vehicleId = vehicleId;
-    if (couponId) registration.couponId = couponId;
-    await registration.save();
-
-    // Attribute the client to the commercial who registered them
-    const vehicle = await this.vehicleModel.findByPk(vehicleId);
-    if (vehicle?.clientId) {
-      await this.clientModel.update(
-        { commercialId: registration.commercialId },
-        { where: { id: vehicle.clientId, commercialId: null } },
-      );
-    }
-
-    return registration;
+    );
   }
 
   async confirmRegistrationById(
@@ -181,26 +187,34 @@ export class CommercialService {
     vehicleId: number,
     couponId?: number,
   ) {
-    const registration = await this.registrationModel.findOne({
-      where: { id: registrationId, confirmed: false },
-    });
+    return this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
+      async (t) => {
+        // SELECT FOR UPDATE prevents race between explicit link and plate-based fallback
+        const registration = await this.registrationModel.findOne({
+          where: { id: registrationId, confirmed: false },
+          lock: Transaction.LOCK.UPDATE,
+          transaction: t,
+        });
 
-    if (!registration) return null;
+        if (!registration) return null;
 
-    registration.confirmed = true;
-    registration.vehicleId = vehicleId;
-    if (couponId) registration.couponId = couponId;
-    await registration.save();
+        await registration.update(
+          { confirmed: true, vehicleId, ...(couponId ? { couponId } : {}) },
+          { transaction: t },
+        );
 
-    const vehicle = await this.vehicleModel.findByPk(vehicleId);
-    if (vehicle?.clientId) {
-      await this.clientModel.update(
-        { commercialId: registration.commercialId },
-        { where: { id: vehicle.clientId, commercialId: null } },
-      );
-    }
+        const vehicle = await this.vehicleModel.findByPk(vehicleId, { transaction: t });
+        if (vehicle?.clientId) {
+          await this.clientModel.update(
+            { commercialId: registration.commercialId },
+            { where: { id: vehicle.clientId, commercialId: null }, transaction: t },
+          );
+        }
 
-    return registration;
+        return registration;
+      },
+    );
   }
 
   // ─── Portefeuille clients ────────────────────────────────────

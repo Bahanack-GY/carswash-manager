@@ -31,8 +31,10 @@ export const couponsApi = {
         return response.data;
     },
 
-    updateStatus: async ({ id, data }: { id: number; data: UpdateCouponStatusDto }): Promise<Coupon> => {
-        const response = await apiClient.patch<Coupon>(`/coupons/${id}/status`, data);
+    updateStatus: async ({ id, data, idempotencyKey }: { id: number; data: UpdateCouponStatusDto; idempotencyKey?: string }): Promise<Coupon> => {
+        const response = await apiClient.patch<Coupon>(`/coupons/${id}/status`, data, {
+            headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+        });
         return response.data;
     },
 

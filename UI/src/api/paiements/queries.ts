@@ -29,7 +29,8 @@ export const useCreatePaiement = () => {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (data: CreatePaiementDto) => paiementsApi.create(data),
+        mutationFn: ({ idempotencyKey, ...data }: CreatePaiementDto & { idempotencyKey?: string }) =>
+            paiementsApi.create(data, idempotencyKey),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['factures'] });
             queryClient.invalidateQueries({ queryKey: PAIEMENTS_KEYS.all });

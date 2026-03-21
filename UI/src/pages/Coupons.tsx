@@ -209,7 +209,7 @@ export default function Coupons() {
                         onClick={(e) => {
                           e.stopPropagation()
                           const nextStatus = c.statut === 'pending' ? 'washing' : c.statut === 'washing' ? 'done' : 'pending'
-                          updateStatus.mutate({ id: c.id, data: { statut: nextStatus } })
+                          updateStatus.mutate({ id: c.id, data: { statut: nextStatus }, idempotencyKey: `coupon-${c.id}-${nextStatus}` })
                         }}
                         disabled={updateStatus.isPending}
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border hover:opacity-80 disabled:opacity-50 ${st.cls}`}
@@ -257,7 +257,7 @@ export default function Coupons() {
                       onClick={(e) => {
                         e.stopPropagation()
                         const nextStatus = c.statut === 'pending' ? 'washing' : c.statut === 'washing' ? 'done' : 'pending';
-                        updateStatus.mutate({ id: c.id, data: { statut: nextStatus } })
+                        updateStatus.mutate({ id: c.id, data: { statut: nextStatus }, idempotencyKey: `coupon-${c.id}-${nextStatus}` })
                       }}
                       disabled={updateStatus.isPending}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border cursor-pointer hover:opacity-80 disabled:opacity-50 ${st.cls}`}

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
+import { Transaction } from 'sequelize';
 import { WashOperationsService } from './wash-operations.service';
 import { TypeLavage } from './models/type-lavage.model';
 import { ServiceSpecial } from './models/service-special.model';
@@ -32,6 +33,7 @@ describe('WashOperationsService', () => {
     let clientModel: any;
     let stationModel: any;
     let performanceModel: any;
+    let bonLavageModel: any;
     let commercialService: any;
     let sequelize: any;
 
@@ -73,19 +75,24 @@ describe('WashOperationsService', () => {
         washers: [],
     };
 
+    const mockTxn = {
+        commit: jest.fn().mockResolvedValue(undefined),
+        rollback: jest.fn().mockResolvedValue(undefined),
+    };
+
     beforeEach(async () => {
+        jest.clearAllMocks();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 WashOperationsService,
                 {
                     provide: Sequelize,
                     useValue: {
-                        transaction: jest.fn().mockImplementation((fn: any) =>
-                            fn({
-                                commit: jest.fn(),
-                                rollback: jest.fn(),
-                            }),
-                        ),
+                        transaction: jest.fn().mockImplementation((...args: any[]) => {
+                            const fn = args.find((a) => typeof a === 'function');
+                            if (fn) return fn(mockTxn);
+                            return Promise.resolve(mockTxn); // manual transaction
+                        }),
                     },
                 },
                 {
@@ -148,6 +155,7 @@ describe('WashOperationsService', () => {
                 {
                     provide: getModelToken(Vehicle),
                     useValue: {
+                        findByPk: jest.fn(),
                         findOne: jest.fn(),
                         create: jest.fn(),
                     },
@@ -155,8 +163,10 @@ describe('WashOperationsService', () => {
                 {
                     provide: getModelToken(Client),
                     useValue: {
+                        findByPk: jest.fn(),
                         findOne: jest.fn(),
                         create: jest.fn(),
+                        update: jest.fn(),
                     },
                 },
                 {
@@ -170,6 +180,7 @@ describe('WashOperationsService', () => {
                     useValue: {
                         create: jest.fn(),
                         findOne: jest.fn(),
+                        findOrCreate: jest.fn(),
                     },
                 },
                 {
@@ -208,6 +219,7 @@ describe('WashOperationsService', () => {
         clientModel = module.get(getModelToken(Client));
         stationModel = module.get(getModelToken(Station));
         performanceModel = module.get(getModelToken(Performance));
+        bonLavageModel = module.get(getModelToken(BonLavage));
         commercialService = module.get<CommercialService>(CommercialService);
         sequelize = module.get<Sequelize>(Sequelize);
     });
@@ -375,6 +387,204 @@ describe('WashOperationsService', () => {
             const result = await service.findMyAssigned(1);
 
             expect(result).toHaveLength(1);
+        });
+    });
+
+    // ─── Atomicity & Isolation ─────────────────────────────────────────
+    describe('createFiche — atomicity & isolation', () => {
+        beforeEach(() => {
+            fichePisteModel.findOne.mockResolvedValue(null);
+            fichePisteModel.create.mockResolvedValue(mockFiche);
+            fichePisteModel.findByPk.mockResolvedValue(mockFiche);
+            ficheExtrasModel.bulkCreate.mockResolvedValue([]);
+        });
+
+        it('uses REPEATABLE READ isolation', async () => {
+            await service.createFiche({ stationId: 1, vehicleId: 1, date: '2026-03-01' } as any);
+
+            expect(sequelize.transaction).toHaveBeenCalledWith(
+                expect.objectContaining({ isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ }),
+                expect.any(Function),
+            );
+        });
+
+        it('locks last fiche row during numero generation', async () => {
+            await service.createFiche({ stationId: 1, vehicleId: 1, date: '2026-03-01' } as any);
+
+            expect(fichePisteModel.findOne).toHaveBeenCalledWith(
+                expect.objectContaining({ lock: Transaction.LOCK.UPDATE }),
+            );
+        });
+
+        it('passes the same transaction to fiche create and extras bulkCreate', async () => {
+            await service.createFiche({ stationId: 1, vehicleId: 1, date: '2026-03-01', extrasIds: [1, 2] } as any);
+
+            const createTxn = fichePisteModel.create.mock.calls[0][1]?.transaction;
+            const bulkTxn = ficheExtrasModel.bulkCreate.mock.calls[0][1]?.transaction;
+            expect(createTxn).toBeDefined();
+            expect(createTxn).toBe(bulkTxn);
+        });
+    });
+
+    describe('assignWashers — atomicity', () => {
+        beforeEach(() => {
+            couponModel.findByPk.mockResolvedValue(mockCoupon);
+            couponWashersModel.destroy.mockResolvedValue(1);
+            couponWashersModel.bulkCreate.mockResolvedValue([]);
+            couponModel.findByPk.mockResolvedValue(mockCoupon);
+        });
+
+        it('uses REPEATABLE READ isolation', async () => {
+            await service.assignWashers(1, { washerIds: [1] });
+
+            expect(sequelize.transaction).toHaveBeenCalledWith(
+                expect.objectContaining({ isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ }),
+                expect.any(Function),
+            );
+        });
+
+        it('destroy and bulkCreate happen in same transaction', async () => {
+            await service.assignWashers(1, { washerIds: [2, 3] });
+
+            const destroyTxn = couponWashersModel.destroy.mock.calls[0][0]?.transaction;
+            const bulkTxn = couponWashersModel.bulkCreate.mock.calls[0][1]?.transaction;
+            expect(destroyTxn).toBeDefined();
+            expect(destroyTxn).toBe(bulkTxn);
+        });
+    });
+
+    describe('updateCouponStatus — Done (performance tracking)', () => {
+        const mockPerf = {
+            vehiculesLaves: 2,
+            bonusEstime: 300,
+            increment: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn(),
+        };
+        const mockWasher = { id: 10, bonusParLavage: 150 };
+        const mockDoneCoupon = {
+            id: 1,
+            statut: CouponStatus.Pending,
+            fichePiste: { stationId: 1, typeLavage: { fraisService: 200 }, extras: [] },
+            washers: [mockWasher],
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+
+        beforeEach(() => {
+            couponModel.findByPk.mockResolvedValue(mockDoneCoupon);
+            performanceModel.findOrCreate.mockResolvedValue([mockPerf, false]);
+            couponModel.findByPk.mockResolvedValueOnce(mockDoneCoupon).mockResolvedValueOnce(mockDoneCoupon);
+        });
+
+        it('uses SERIALIZABLE isolation', async () => {
+            await service.updateCouponStatus(1, { statut: CouponStatus.Done });
+
+            expect(sequelize.transaction).toHaveBeenCalledWith(
+                expect.objectContaining({ isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE }),
+                expect.any(Function),
+            );
+        });
+
+        it('uses atomic increment — not read-modify-write — for performance counters', async () => {
+            await service.updateCouponStatus(1, { statut: CouponStatus.Done });
+
+            expect(mockPerf.increment).toHaveBeenCalledWith(
+                expect.objectContaining({ vehiculesLaves: 1 }),
+                expect.any(Object),
+            );
+            expect(mockPerf.update).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('updateCouponStatus — Paid (loyalty points)', () => {
+        const mockClient = {
+            id: 5,
+            pointsFidelite: 9,
+            increment: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn(),
+        };
+        const mockPaidCoupon = {
+            id: 1,
+            statut: CouponStatus.Done,
+            fichePiste: { stationId: 1, clientId: 5, vehicleId: 1, controleurId: 1, typeLavage: null, extras: [] },
+            washers: [],
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+
+        beforeEach(() => {
+            couponModel.findByPk
+                .mockResolvedValueOnce(mockPaidCoupon)
+                .mockResolvedValueOnce(mockPaidCoupon);
+            clientModel.findByPk.mockResolvedValue(mockClient);
+            bonLavageModel.findOne.mockResolvedValue(null);
+            bonLavageModel.create.mockResolvedValue({});
+        });
+
+        it('uses atomic increment for loyalty points — not read-modify-write', async () => {
+            await service.updateCouponStatus(1, { statut: CouponStatus.Paid });
+
+            expect(mockClient.increment).toHaveBeenCalledWith('pointsFidelite', expect.objectContaining({ by: 1 }));
+            expect(mockClient.update).not.toHaveBeenCalled();
+        });
+
+        it('locks the client row with SELECT FOR UPDATE', async () => {
+            await service.updateCouponStatus(1, { statut: CouponStatus.Paid });
+
+            expect(clientModel.findByPk).toHaveBeenCalledWith(
+                5,
+                expect.objectContaining({ lock: Transaction.LOCK.UPDATE }),
+            );
+        });
+
+        it('uses SERIALIZABLE isolation', async () => {
+            await service.updateCouponStatus(1, { statut: CouponStatus.Paid });
+
+            expect(sequelize.transaction).toHaveBeenCalledWith(
+                expect.objectContaining({ isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE }),
+                expect.any(Function),
+            );
+        });
+    });
+
+    describe('createNouveauLavage — atomicity & isolation', () => {
+        beforeEach(() => {
+            fichePisteModel.findOne.mockResolvedValue(null);
+            couponModel.findOne.mockResolvedValue(null);
+            fichePisteModel.create.mockResolvedValue({ id: 10 });
+            couponModel.create.mockResolvedValue({ id: 20 });
+            typeLavageModel.findAll.mockResolvedValue([]);
+            serviceSpecialModel.findAll.mockResolvedValue([]);
+            ficheExtrasModel.bulkCreate.mockResolvedValue([]);
+            couponWashersModel.bulkCreate.mockResolvedValue([]);
+            couponModel.findByPk.mockResolvedValue(mockCoupon);
+        });
+
+        it('uses SERIALIZABLE isolation', async () => {
+            await service.createNouveauLavage({
+                stationId: 1, vehicleId: 1, clientId: 1, date: '2026-03-01',
+            } as any);
+
+            expect(sequelize.transaction).toHaveBeenCalledWith(
+                expect.objectContaining({ isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE }),
+            );
+        });
+
+        it('commits on success', async () => {
+            await service.createNouveauLavage({
+                stationId: 1, vehicleId: 1, clientId: 1, date: '2026-03-01',
+            } as any);
+
+            expect(mockTxn.commit).toHaveBeenCalled();
+            expect(mockTxn.rollback).not.toHaveBeenCalled();
+        });
+
+        it('rolls back and rethrows on error', async () => {
+            fichePisteModel.create.mockRejectedValue(new Error('FK violation'));
+
+            await expect(service.createNouveauLavage({
+                stationId: 1, vehicleId: 1, clientId: 1, date: '2026-03-01',
+            } as any)).rejects.toThrow('FK violation');
+
+            expect(mockTxn.rollback).toHaveBeenCalled();
         });
     });
 });

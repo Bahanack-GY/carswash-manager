@@ -162,6 +162,35 @@ export class UsersService {
     return result;
   }
 
+  async updateSelf(
+    id: number,
+    dto: { email?: string; telephone?: string; newPassword?: string; currentPassword?: string },
+  ) {
+    const user = await this.userModel.findByPk(id);
+    if (!user) throw new NotFoundException(`Utilisateur #${id} introuvable`);
+
+    if (dto.newPassword) {
+      if (!dto.currentPassword) {
+        throw new ForbiddenException('Le mot de passe actuel est requis pour changer le mot de passe');
+      }
+      const valid = await user.validatePassword(dto.currentPassword);
+      if (!valid) {
+        throw new ForbiddenException('Mot de passe actuel incorrect');
+      }
+    }
+
+    if (dto.email) await this.checkEmailUniqueness(dto.email, id);
+
+    const updates: any = {};
+    if (dto.email) updates.email = dto.email;
+    if (dto.telephone !== undefined) updates.telephone = dto.telephone;
+    if (dto.newPassword) updates.password = dto.newPassword;
+
+    await user.update(updates);
+    const { password, ...result } = user.toJSON();
+    return result;
+  }
+
   async update(id: number, updateUserDto: UpdateUserDto) {
     const user = await this.userModel.findByPk(id);
 

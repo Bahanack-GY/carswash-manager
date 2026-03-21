@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/sequelize';
+import { Sequelize } from 'sequelize-typescript';
+import { Transaction } from 'sequelize';
 import { BillingService } from './billing.service';
 import { Facture } from './models/facture.model';
 import { Paiement } from './models/paiement.model';
@@ -11,6 +13,9 @@ describe('BillingService', () => {
     let factureModel: any;
     let paiementModel: any;
     let ligneVenteModel: any;
+    let sequelize: any;
+
+    const mockTxn = { commit: jest.fn(), rollback: jest.fn() };
 
     const mockFacture = {
         id: 1,
@@ -33,9 +38,20 @@ describe('BillingService', () => {
     };
 
     beforeEach(async () => {
+        jest.clearAllMocks();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 BillingService,
+                {
+                    provide: Sequelize,
+                    useValue: {
+                        transaction: jest.fn().mockImplementation((...args: any[]) => {
+                            const fn = args.find((a) => typeof a === 'function');
+                            if (fn) return fn(mockTxn);
+                            return Promise.resolve(mockTxn);
+                        }),
+                    },
+                },
                 {
                     provide: getModelToken(Facture),
                     useValue: {
@@ -67,6 +83,7 @@ describe('BillingService', () => {
         factureModel = module.get(getModelToken(Facture));
         paiementModel = module.get(getModelToken(Paiement));
         ligneVenteModel = module.get(getModelToken(LigneVente));
+        sequelize = module.get(Sequelize);
     });
 
     it('should be defined', () => {
@@ -161,6 +178,7 @@ describe('BillingService', () => {
                         sousTotal: 10000,
                     }),
                 ]),
+                expect.any(Object),
             );
         });
 
@@ -182,6 +200,7 @@ describe('BillingService', () => {
 
             expect(factureModel.create).toHaveBeenCalledWith(
                 expect.objectContaining({ numero: 'FAC-0043' }),
+                expect.any(Object),
             );
         });
     });
@@ -285,6 +304,51 @@ describe('BillingService', () => {
                     }),
                 }),
             );
+        });
+    });
+
+    // ─── Atomicity & Isolation ─────────────────────────────────────────
+    describe('createFacture — atomicity & isolation', () => {
+        beforeEach(() => {
+            factureModel.findOne.mockResolvedValue(null);
+            factureModel.create.mockResolvedValue({ id: 1 });
+            factureModel.findByPk.mockResolvedValue(mockFacture);
+            ligneVenteModel.bulkCreate.mockResolvedValue([]);
+        });
+
+        it('uses REPEATABLE READ isolation', async () => {
+            await service.createFacture({ stationId: 1, montantTotal: 1000, lignes: [] } as any);
+
+            expect(sequelize.transaction).toHaveBeenCalledWith(
+                expect.objectContaining({ isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ }),
+                expect.any(Function),
+            );
+        });
+
+        it('locks the last facture row during numero generation to prevent duplicates', async () => {
+            await service.createFacture({ stationId: 1, montantTotal: 1000, lignes: [] } as any);
+
+            expect(factureModel.findOne).toHaveBeenCalledWith(
+                expect.objectContaining({ lock: Transaction.LOCK.UPDATE }),
+            );
+        });
+
+        it('passes the same transaction to facture create and lignes bulkCreate', async () => {
+            const lignes = [{ produitId: 1, quantite: 1, prixUnitaire: 1000 }];
+            await service.createFacture({ stationId: 1, montantTotal: 1000, lignes } as any);
+
+            const createTxn = factureModel.create.mock.calls[0][1]?.transaction;
+            const bulkTxn = ligneVenteModel.bulkCreate.mock.calls[0][1]?.transaction;
+            expect(createTxn).toBeDefined();
+            expect(createTxn).toBe(bulkTxn);
+        });
+
+        it('propagates errors (rollback handled by managed transaction)', async () => {
+            ligneVenteModel.bulkCreate.mockRejectedValue(new Error('constraint violation'));
+
+            await expect(
+                service.createFacture({ stationId: 1, montantTotal: 1000, lignes: [{ produitId: 1, quantite: 1, prixUnitaire: 1000 }] } as any),
+            ).rejects.toThrow('constraint violation');
         });
     });
 });

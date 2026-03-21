@@ -113,6 +113,17 @@ export class UsersController {
     return this.usersService.create(createUserDto);
   }
 
+  @Patch('me')
+  @ApiOperation({ summary: 'Mettre à jour son propre profil (email, téléphone, mot de passe)' })
+  @ApiResponse({ status: 200, description: 'Profil mis à jour' })
+  @ApiResponse({ status: 403, description: 'Mot de passe actuel incorrect' })
+  async updateSelf(
+    @CurrentUser('id') currentUserId: number,
+    @Body() dto: { email?: string; telephone?: string; newPassword?: string; currentPassword?: string },
+  ) {
+    return this.usersService.updateSelf(currentUserId, dto);
+  }
+
   @Patch(':id')
   @Roles(Role.SuperAdmin, Role.Manager)
   @ApiOperation({

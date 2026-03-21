@@ -6,13 +6,14 @@ import {
   CreditCard, Banknote, Smartphone, Wallet, Receipt, TrendingUp,
   ArrowDownLeft, ArrowUpRight, Search, Filter, Plus, X,
   Ticket, Car, User, CheckCircle2, ChevronLeft, ChevronRight, Printer, Phone, Droplets, Gift,
-  Calendar,
+  Calendar, ShieldCheck,
 } from '@/lib/icons'
 import Logo from '@/assets/Logo.png'
 import { usePaiements, useCaisseSummary, useCreatePaiement } from '@/api/paiements'
 import { useCoupons, useUpdateCouponStatus } from '@/api/coupons'
 import { bondsApi } from '@/api/bonds/api'
 import { useMarkBondAsUsed } from '@/api/bonds/queries'
+import { useIdempotencyKey } from '@/lib/idempotency'
 import type { BonLavage } from '@/api/bonds/types'
 import { useAuth } from '@/contexts/AuthContext'
 import type { CreatePaiementDto, Paiement } from '@/api/paiements/types'
@@ -79,6 +80,7 @@ export default function Caisse() {
   const [couponPayMethod, setCouponPayMethod] = useState<CreatePaiementDto['methode']>('cash')
   const [couponPayRef, setCouponPayRef] = useState('')
   const [receiptCoupon, setReceiptCoupon] = useState<{ coupon: Coupon; method: string } | null>(null)
+  const [pendingPayment, setPendingPayment] = useState<Coupon | null>(null)
 
   // Bond state
   const [useBonLavage, setUseBonLavage] = useState(false)
@@ -101,6 +103,8 @@ export default function Caisse() {
   const { data: paiementsData, isLoading, isError } = usePaiements({ stationId, page, limit: 10, startDate, endDate })
   const createPaiement = useCreatePaiement()
   const updateCouponStatus = useUpdateCouponStatus()
+  const { idempotencyKey: couponPayKey, resetKey: resetCouponPayKey } = useIdempotencyKey()
+  const { idempotencyKey: txKey, resetKey: resetTxKey } = useIdempotencyKey()
   const markBondAsUsed = useMarkBondAsUsed()
   const [paidPage, setPaidPage] = useState(1)
 
@@ -155,7 +159,8 @@ export default function Caisse() {
         referenceExterne: formData.referenceExterne || undefined,
         stationId: selectedStationId || 1,
       }
-      await createPaiement.mutateAsync(payload)
+      await createPaiement.mutateAsync({ ...payload, idempotencyKey: txKey.current })
+      resetTxKey()
       setModalType(null)
       // Reset form
       setFormData({ methode: 'cash', montant: 0, description: '', referenceExterne: '' })
@@ -194,6 +199,7 @@ export default function Caisse() {
         const bondAmount = Math.round(montantTotal * validatedBond.pourcentage / 100)
         const remainingAmount = montantTotal - bondAmount
 
+        const keyBase = couponPayKey.current
         // Create bond paiement record
         await createPaiement.mutateAsync({
           type: 'income',
@@ -203,6 +209,7 @@ export default function Caisse() {
           referenceExterne: validatedBond.code,
           stationId: sid,
           couponId: coupon.id,
+          idempotencyKey: `${keyBase}-bond`,
         })
 
         // If partial bond, create second paiement for the remainder
@@ -215,6 +222,7 @@ export default function Caisse() {
             referenceExterne: couponPayRef || coupon.numero,
             stationId: sid,
             couponId: coupon.id,
+            idempotencyKey: `${keyBase}-complement`,
           })
         }
 
@@ -228,11 +236,13 @@ export default function Caisse() {
           ? `Bon ${validatedBond.code} (100%)`
           : `Bon ${validatedBond.code} (${validatedBond.pourcentage}%) + ${METHOD_LABELS[couponPayMethod] || couponPayMethod}`
 
-        await updateCouponStatus.mutateAsync({ id: coupon.id, data: { statut: 'paid' } })
+        await updateCouponStatus.mutateAsync({ id: coupon.id, data: { statut: 'paid' }, idempotencyKey: `${keyBase}-status` })
+        resetCouponPayKey()
         toast.success(`Coupon ${coupon.numero} encaissé !`)
         setReceiptCoupon({ coupon, method: methodDisplay })
       } else {
         // Original flow — full payment
+        const key = couponPayKey.current
         await createPaiement.mutateAsync({
           type: 'income',
           montant: montantTotal,
@@ -241,8 +251,10 @@ export default function Caisse() {
           referenceExterne: couponPayRef || coupon.numero,
           stationId: sid,
           couponId: coupon.id,
+          idempotencyKey: `${key}-payment`,
         })
-        await updateCouponStatus.mutateAsync({ id: coupon.id, data: { statut: 'paid' } })
+        await updateCouponStatus.mutateAsync({ id: coupon.id, data: { statut: 'paid' }, idempotencyKey: `${key}-status` })
+        resetCouponPayKey()
         toast.success(`Coupon ${coupon.numero} encaissé !`)
         setReceiptCoupon({ coupon, method: couponPayMethod })
       }
@@ -275,7 +287,7 @@ export default function Caisse() {
             </button>
             {!isComptable && (
               <button
-                onClick={() => setModalType('income')}
+                onClick={() => { setModalType('income'); resetTxKey() }}
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-teal-500 text-white font-semibold rounded-xl shadow-lg shadow-teal-500/25 hover:shadow-teal-500/35 transition-shadow text-sm"
               >
                 <Plus className="w-4 h-4" /> Encaisser
@@ -391,7 +403,7 @@ export default function Caisse() {
                       {!isExpanded ? (
                         !isComptable && (
                           <button
-                            onClick={() => setPayingCouponId(c.id)}
+                            onClick={() => { setPayingCouponId(c.id); resetCouponPayKey() }}
                             className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-teal-600 to-teal-500 text-white text-xs font-semibold rounded-xl shadow-sm shadow-teal-500/20 hover:shadow-teal-500/30 transition-all shrink-0"
                           >
                             <Banknote className="w-3.5 h-3.5" /> Encaisser
@@ -516,11 +528,11 @@ export default function Caisse() {
                                 </div>
                               )}
                               <button
-                                onClick={() => handleCouponPayment(c)}
-                                disabled={createPaiement.isPending || (useBonLavage && !validatedBond)}
+                                onClick={() => setPendingPayment(c)}
+                                disabled={useBonLavage && !validatedBond}
                                 className="flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-teal-600 to-teal-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-teal-500/20 hover:shadow-teal-500/30 transition-all disabled:opacity-50 shrink-0"
                               >
-                                {createPaiement.isPending ? 'Encaissement...' : 'Confirmer'}
+                                Confirmer
                                 <ChevronRight className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -914,6 +926,129 @@ export default function Caisse() {
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+
+      {/* ── Confirmation Modal ──────────────────────── */}
+      <AnimatePresence>
+        {pendingPayment && (() => {
+          const c = pendingPayment
+          const montantTotal = Number(c.montantTotal) || 0
+          const client = c.fichePiste?.client
+          const vehicle = c.fichePiste?.vehicle
+          const washType = c.fichePiste?.typeLavage
+
+          let methodLabel: string
+          let amountDisplay: string
+          if (useBonLavage && validatedBond) {
+            const bondAmount = Math.round(montantTotal * validatedBond.pourcentage / 100)
+            const remainder = montantTotal - bondAmount
+            methodLabel = validatedBond.pourcentage === 100
+              ? `Bon ${validatedBond.code} (100%)`
+              : `Bon ${validatedBond.code} (${validatedBond.pourcentage}%) + ${METHOD_LABELS[couponPayMethod] || couponPayMethod}`
+            amountDisplay = validatedBond.pourcentage === 100
+              ? `${bondAmount.toLocaleString()} FCFA (bon)`
+              : `${bondAmount.toLocaleString()} FCFA (bon) + ${remainder.toLocaleString()} FCFA`
+          } else {
+            methodLabel = METHOD_LABELS[couponPayMethod] || couponPayMethod
+            amountDisplay = `${montantTotal.toLocaleString()} FCFA`
+          }
+
+          return (
+            <motion.div
+              key="confirm-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+              onClick={() => setPendingPayment(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 12 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 12 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="bg-panel border border-edge rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="px-6 pt-6 pb-4 flex items-start gap-4">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(51,203,204,0.12)' }}>
+                    <ShieldCheck className="w-5 h-5" style={{ color: '#33cbcc' }} />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-bold text-ink text-base leading-tight">Confirmer l'encaissement</h3>
+                    <p className="text-xs text-ink-muted font-body mt-0.5">Vérifiez les détails avant de valider</p>
+                  </div>
+                  <button onClick={() => setPendingPayment(null)} className="ml-auto text-ink-faded hover:text-ink transition-colors flex-shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Summary card */}
+                <div className="mx-6 mb-5 rounded-xl border border-edge overflow-hidden">
+                  <div className="px-4 py-3 flex items-center justify-between border-b border-edge" style={{ background: 'var(--c-inset)' }}>
+                    <span className="font-mono text-sm font-bold text-accent">{c.numero}</span>
+                    <span className="text-xs font-body text-ink-muted">{washType?.nom ?? 'Lavage'}</span>
+                  </div>
+                  <div className="divide-y divide-edge">
+                    {client && (
+                      <div className="px-4 py-2.5 flex items-center justify-between">
+                        <span className="text-xs text-ink-muted font-body flex items-center gap-1.5"><User className="w-3 h-3" />Client</span>
+                        <span className="text-sm font-medium text-ink font-body">{client.nom}</span>
+                      </div>
+                    )}
+                    {vehicle && (
+                      <div className="px-4 py-2.5 flex items-center justify-between">
+                        <span className="text-xs text-ink-muted font-body flex items-center gap-1.5"><Car className="w-3 h-3" />Véhicule</span>
+                        <span className="text-sm font-medium text-ink font-body">{vehicle.immatriculation}</span>
+                      </div>
+                    )}
+                    <div className="px-4 py-2.5 flex items-center justify-between">
+                      <span className="text-xs text-ink-muted font-body flex items-center gap-1.5"><Banknote className="w-3 h-3" />Mode</span>
+                      <span className="text-sm font-medium text-ink font-body">{methodLabel}</span>
+                    </div>
+                    <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(51,203,204,0.06)' }}>
+                      <span className="text-xs font-semibold text-ink-muted font-body">Montant total</span>
+                      <span className="text-lg font-heading font-bold" style={{ color: '#33cbcc' }}>{amountDisplay}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="px-6 pb-6 flex gap-3">
+                  <button
+                    onClick={() => setPendingPayment(null)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-edge text-sm font-semibold font-body text-ink-muted hover:text-ink hover:border-outline transition-all"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setPendingPayment(null)
+                      await handleCouponPayment(c)
+                    }}
+                    disabled={createPaiement.isPending}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold font-body text-white transition-all disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #1e8f90 0%, #33cbcc 100%)' }}
+                  >
+                    {createPaiement.isPending ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Encaissement…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        Confirmer
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )
+        })()}
       </AnimatePresence>
 
       {/* ── Receipt Modal ───────────────────────────── */}

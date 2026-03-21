@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { Op, fn, col, literal } from 'sequelize';
+import { Sequelize } from 'sequelize-typescript';
+import { Op, Transaction, fn, col, literal } from 'sequelize';
 import { Facture } from './models/facture.model.js';
 import { Paiement } from './models/paiement.model.js';
 import { LigneVente } from './models/ligne-vente.model.js';
@@ -15,6 +16,7 @@ import { TransactionType } from '../common/constants/status.enum.js';
 @Injectable()
 export class BillingService {
   constructor(
+    private readonly sequelize: Sequelize,
     @InjectModel(Facture)
     private readonly factureModel: typeof Facture,
     @InjectModel(Paiement)
@@ -82,45 +84,44 @@ export class BillingService {
   }
 
   async createFacture(dto: CreateFactureDto) {
-    const numero = await this.generateFactureNumero();
-
     const { lignes, ...factureData } = dto;
 
-    const facture = await this.factureModel.create({
-      ...factureData,
-      numero,
-    } as any);
+    const factureId = await this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async (t) => {
+        const numero = await this.generateFactureNumero(t);
+        const facture = await this.factureModel.create(
+          { ...factureData, numero } as any,
+          { transaction: t },
+        );
 
-    if (lignes && lignes.length > 0) {
-      const ligneRecords = lignes.map((ligne) => ({
-        factureId: facture.id,
-        produitId: ligne.produitId,
-        quantite: ligne.quantite,
-        prixUnitaire: ligne.prixUnitaire,
-        sousTotal: ligne.quantite * ligne.prixUnitaire,
-      }));
-      await this.ligneVenteModel.bulkCreate(ligneRecords as any);
-    }
+        if (lignes && lignes.length > 0) {
+          const ligneRecords = lignes.map((ligne) => ({
+            factureId: facture.id,
+            produitId: ligne.produitId,
+            quantite: ligne.quantite,
+            prixUnitaire: ligne.prixUnitaire,
+            sousTotal: ligne.quantite * ligne.prixUnitaire,
+          }));
+          await this.ligneVenteModel.bulkCreate(ligneRecords as any, { transaction: t });
+        }
 
-    return this.findOneFacture(facture.id);
+        return facture.id;
+      },
+    );
+
+    return this.findOneFacture(factureId);
   }
 
-  private async generateFactureNumero(): Promise<string> {
+  private async generateFactureNumero(t: Transaction): Promise<string> {
     const lastFacture = await this.factureModel.findOne({
       order: [['numero', 'DESC']],
       attributes: ['numero'],
+      lock: Transaction.LOCK.UPDATE,
+      transaction: t,
     });
-
-    let nextNumber = 1;
-
-    if (lastFacture?.numero) {
-      const match = lastFacture.numero.match(/FAC-(\d+)/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
-      }
-    }
-
-    return `FAC-${String(nextNumber).padStart(4, '0')}`;
+    const next = lastFacture?.numero ? (parseInt(lastFacture.numero.match(/FAC-(\d+)/)?.[1] ?? '0', 10) + 1) : 1;
+    return `FAC-${String(next).padStart(4, '0')}`;
   }
 
   // ─── Paiements ──────────────────────────────────────────────────────

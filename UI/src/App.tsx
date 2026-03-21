@@ -35,6 +35,7 @@ import AdminClients from '@/pages/admin/AdminClients'
 import AdminIncidents from '@/pages/admin/AdminIncidents'
 import Classement from '@/pages/Classement'
 import Unauthorized from '@/pages/Unauthorized'
+import Settings from '@/pages/Settings'
 
 export default function App() {
   return (
@@ -206,6 +207,7 @@ export default function App() {
               <AuditLogs />
             </ProtectedRoute>
           } />
+          <Route path="/settings" element={<Settings />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

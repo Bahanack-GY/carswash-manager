@@ -12,8 +12,10 @@ export const paiementsApi = {
         return response.data;
     },
 
-    create: async (data: CreatePaiementDto): Promise<Paiement> => {
-        const response = await apiClient.post<Paiement>('/caisse/transactions', data);
+    create: async (data: CreatePaiementDto, idempotencyKey?: string): Promise<Paiement> => {
+        const response = await apiClient.post<Paiement>('/caisse/transactions', data, {
+            headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+        });
         return response.data;
     },
 

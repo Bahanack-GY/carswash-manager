@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
-import { Op } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import { TypeLavage } from './models/type-lavage.model.js';
 import { ServiceSpecial } from './models/service-special.model.js';
 import { FichePiste } from './models/fiche-piste.model.js';
@@ -215,24 +215,27 @@ export class WashOperationsService {
   }
 
   async createFiche(dto: CreateFichePisteDto) {
-    const numero = await this.generateFicheNumero();
-
     const { extrasIds, ...ficheData } = dto;
 
-    const fiche = await this.fichePisteModel.create({
-      ...ficheData,
-      numero,
-    } as any);
+    const ficheId = await this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async (t) => {
+        const numero = await this.generateFicheNumero(t);
+        const fiche = await this.fichePisteModel.create(
+          { ...ficheData, numero } as any,
+          { transaction: t },
+        );
 
-    if (extrasIds && extrasIds.length > 0) {
-      const extras = extrasIds.map((serviceSpecialId) => ({
-        fichePisteId: fiche.id,
-        serviceSpecialId,
-      }));
-      await this.ficheExtrasModel.bulkCreate(extras as any);
-    }
+        if (extrasIds && extrasIds.length > 0) {
+          const extras = extrasIds.map((serviceSpecialId) => ({ fichePisteId: fiche.id, serviceSpecialId }));
+          await this.ficheExtrasModel.bulkCreate(extras as any, { transaction: t });
+        }
 
-    return this.findOneFiche(fiche.id);
+        return fiche.id;
+      },
+    );
+
+    return this.findOneFiche(ficheId);
   }
 
   async updateFiche(id: number, dto: UpdateFichePisteDto) {
@@ -243,41 +246,34 @@ export class WashOperationsService {
 
     const { extrasIds, ...ficheData } = dto;
 
-    await fiche.update(ficheData);
+    await this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async (t) => {
+        await fiche.update(ficheData, { transaction: t });
 
-    if (extrasIds !== undefined) {
-      await this.ficheExtrasModel.destroy({
-        where: { fichePisteId: id },
-      });
+        if (extrasIds !== undefined) {
+          await this.ficheExtrasModel.destroy({ where: { fichePisteId: id }, transaction: t });
 
-      if (extrasIds.length > 0) {
-        const extras = extrasIds.map((serviceSpecialId) => ({
-          fichePisteId: id,
-          serviceSpecialId,
-        }));
-        await this.ficheExtrasModel.bulkCreate(extras as any);
-      }
-    }
+          if (extrasIds.length > 0) {
+            const extras = extrasIds.map((serviceSpecialId) => ({ fichePisteId: id, serviceSpecialId }));
+            await this.ficheExtrasModel.bulkCreate(extras as any, { transaction: t });
+          }
+        }
+      },
+    );
 
     return this.findOneFiche(id);
   }
 
-  private async generateFicheNumero(): Promise<string> {
+  private async generateFicheNumero(t: Transaction): Promise<string> {
     const lastFiche = await this.fichePisteModel.findOne({
       order: [['numero', 'DESC']],
       attributes: ['numero'],
+      lock: Transaction.LOCK.UPDATE,
+      transaction: t,
     });
-
-    let nextNumber = 1;
-
-    if (lastFiche?.numero) {
-      const match = lastFiche.numero.match(/FP-(\d+)/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
-      }
-    }
-
-    return `FP-${String(nextNumber).padStart(4, '0')}`;
+    const next = lastFiche?.numero ? (parseInt(lastFiche.numero.match(/FP-(\d+)/)?.[1] ?? '0', 10) + 1) : 1;
+    return `FP-${String(next).padStart(4, '0')}`;
   }
 
   // ─── Coupon ───────────────────────────────────────────────────────────
@@ -392,32 +388,31 @@ export class WashOperationsService {
     );
     const montantTotal = prixBase + extrasPrix;
 
-    const numero = await this.generateCouponNumero();
+    const couponId = await this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async (t) => {
+        const numero = await this.generateCouponNumero(t);
+        const coupon = await this.couponModel.create(
+          { fichePisteId: dto.fichePisteId, numero, montantTotal } as any,
+          { transaction: t },
+        );
 
-    const coupon = await this.couponModel.create({
-      fichePisteId: dto.fichePisteId,
-      numero,
-      montantTotal,
-    } as any);
+        if (dto.washerIds && dto.washerIds.length > 0) {
+          const washers = dto.washerIds.map((userId) => ({ couponId: coupon.id, userId }));
+          await this.couponWashersModel.bulkCreate(washers as any, { transaction: t });
+        }
 
-    if (dto.washerIds && dto.washerIds.length > 0) {
-      const washers = dto.washerIds.map((userId) => ({
-        couponId: coupon.id,
-        userId,
-      }));
-      await this.couponWashersModel.bulkCreate(washers as any);
-    }
+        return coupon.id;
+      },
+    );
 
-    return this.findOneCoupon(coupon.id);
+    return this.findOneCoupon(couponId);
   }
 
   async updateCouponStatus(id: number, dto: UpdateCouponStatusDto) {
     const coupon = await this.couponModel.findByPk(id, {
       include: [
-        {
-          model: FichePiste,
-          include: [{ model: TypeLavage }, { model: ServiceSpecial }],
-        },
+        { model: FichePiste, include: [{ model: TypeLavage }, { model: ServiceSpecial }] },
         { model: User, as: 'washers' },
       ],
     });
@@ -426,99 +421,90 @@ export class WashOperationsService {
       throw new NotFoundException(`Coupon #${id} introuvable`);
     }
 
-    const updateData: Record<string, any> = { statut: dto.statut };
-    if (dto.statut === CouponStatus.Washing) {
-      updateData.washingStartedAt = new Date();
-    }
-    await coupon.update(updateData);
-
-    if (dto.statut === CouponStatus.Done && coupon.washers?.length > 0) {
-      const today = new Date().toISOString().split('T')[0];
-      const stationId = coupon.fichePiste?.stationId;
-
-      const extras = coupon.fichePiste?.extras ?? [];
-
-      // Frais de service: TypeLavage base fee + sum of extras frais
-      const typeLavageFrais = coupon.fichePiste?.typeLavage?.fraisService != null
-        ? Number(coupon.fichePiste.typeLavage.fraisService) : null;
-      const extrasFraisTotal = extras.reduce(
-        (sum, e) => sum + (e.fraisService != null ? Number(e.fraisService) : 0),
-        0,
-      );
-
-      // Legacy bonus fallback (if no fraisService defined anywhere)
-      const serviceBonuses = extras
-        .filter((e) => e.bonus != null)
-        .map((e) => Number(e.bonus));
-      const maxServiceBonus =
-        serviceBonuses.length > 0 ? Math.max(...serviceBonuses) : null;
-
-      for (const washer of coupon.washers) {
-        // Priority: fraisService system > legacy bonus > user default
-        let bonusPerWasher: number;
-        if (typeLavageFrais != null || extrasFraisTotal > 0) {
-          bonusPerWasher = (typeLavageFrais ?? 0) + extrasFraisTotal;
-        } else if (maxServiceBonus != null) {
-          bonusPerWasher = maxServiceBonus;
-        } else {
-          bonusPerWasher = Number(washer.bonusParLavage) || 150;
+    await this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
+      async (t) => {
+        const updateData: Record<string, any> = { statut: dto.statut };
+        if (dto.statut === CouponStatus.Washing) {
+          updateData.washingStartedAt = new Date();
         }
+        await coupon.update(updateData, { transaction: t });
 
-        const [perf] = await this.performanceModel.findOrCreate({
-          where: {
-            userId: washer.id,
-            stationId,
-            date: today,
-          },
-          defaults: {
-            userId: washer.id,
-            stationId,
-            date: today,
-            vehiculesLaves: 0,
-            bonusEstime: 0,
-          } as any,
-        });
+        if (dto.statut === CouponStatus.Done && coupon.washers?.length > 0) {
+          const today = new Date().toISOString().split('T')[0];
+          const stationId = coupon.fichePiste?.stationId;
+          const extras = coupon.fichePiste?.extras ?? [];
 
-        await perf.update({
-          vehiculesLaves: perf.vehiculesLaves + 1,
-          bonusEstime: Number(perf.bonusEstime) + bonusPerWasher,
-        });
-      }
-    }
-
-    // Confirm commercial registration when coupon is paid (backup path)
-    if (dto.statut === CouponStatus.Paid) {
-      const fichePiste = coupon.fichePiste;
-
-      if (fichePiste?.vehicleId) {
-        const vehicle = await this.vehicleModel.findByPk(fichePiste.vehicleId);
-        if (vehicle?.immatriculation) {
-          await this.commercialService.confirmRegistrationByPlate(
-            vehicle.immatriculation,
-            fichePiste.vehicleId,
-            coupon.id,
+          const typeLavageFrais = coupon.fichePiste?.typeLavage?.fraisService != null
+            ? Number(coupon.fichePiste.typeLavage.fraisService) : null;
+          const extrasFraisTotal = extras.reduce(
+            (sum, e) => sum + (e.fraisService != null ? Number(e.fraisService) : 0), 0,
           );
-        }
-      }
+          const serviceBonuses = extras.filter((e) => e.bonus != null).map((e) => Number(e.bonus));
+          const maxServiceBonus = serviceBonuses.length > 0 ? Math.max(...serviceBonuses) : null;
 
-      // Loyalty points — cross-station: increment globally, reward every 10
-      if (fichePiste?.clientId) {
-        const client = await this.clientModel.findByPk(fichePiste.clientId);
-        if (client) {
-          const newPoints = (client.pointsFidelite ?? 0) + 1;
-          await client.update({ pointsFidelite: newPoints });
+          for (const washer of coupon.washers) {
+            let bonusPerWasher: number;
+            if (typeLavageFrais != null || extrasFraisTotal > 0) {
+              bonusPerWasher = (typeLavageFrais ?? 0) + extrasFraisTotal;
+            } else if (maxServiceBonus != null) {
+              bonusPerWasher = maxServiceBonus;
+            } else {
+              bonusPerWasher = Number(washer.bonusParLavage) || 150;
+            }
 
-          if (newPoints % 10 === 0) {
-            const bonCode = await this.generateFideliteBonCode();
-            await this.bonLavageModel.create({
-              code: bonCode,
-              pourcentage: 100,
-              stationId: null,
-              createdById: fichePiste.controleurId ?? 1,
-              description: `Bon fidélité automatique — ${newPoints} lavages (client #${client.id})`,
-            } as any);
+            const [perf] = await this.performanceModel.findOrCreate({
+              where: { userId: washer.id, stationId, date: today },
+              defaults: { userId: washer.id, stationId, date: today, vehiculesLaves: 0, bonusEstime: 0 } as any,
+              transaction: t,
+            });
+
+            // Atomic increment — no read-modify-write race condition
+            await perf.increment(
+              { vehiculesLaves: 1, bonusEstime: bonusPerWasher },
+              { transaction: t },
+            );
           }
         }
+
+        if (dto.statut === CouponStatus.Paid) {
+          const fichePiste = coupon.fichePiste;
+
+          if (fichePiste?.clientId) {
+            const client = await this.clientModel.findByPk(fichePiste.clientId, {
+              lock: Transaction.LOCK.UPDATE,
+              transaction: t,
+            });
+            if (client) {
+              // Atomic increment — prevents lost updates under concurrency
+              await client.increment('pointsFidelite', { by: 1, transaction: t });
+              const newPoints = (client.pointsFidelite ?? 0) + 1;
+
+              if (newPoints % 10 === 0) {
+                const bonCode = await this.generateFideliteBonCode(t);
+                await this.bonLavageModel.create({
+                  code: bonCode,
+                  pourcentage: 100,
+                  stationId: null,
+                  createdById: fichePiste.controleurId ?? 1,
+                  description: `Bon fidélité automatique — ${newPoints} lavages (client #${client.id})`,
+                } as any, { transaction: t });
+              }
+            }
+          }
+        }
+      },
+    );
+
+    // Confirm commercial registration after commit (best-effort, separate concern)
+    if (dto.statut === CouponStatus.Paid && coupon.fichePiste?.vehicleId) {
+      const vehicle = await this.vehicleModel.findByPk(coupon.fichePiste.vehicleId);
+      if (vehicle?.immatriculation) {
+        await this.commercialService.confirmRegistrationByPlate(
+          vehicle.immatriculation,
+          coupon.fichePiste.vehicleId,
+          coupon.id,
+        );
       }
     }
 
@@ -531,17 +517,17 @@ export class WashOperationsService {
       throw new NotFoundException(`Coupon #${couponId} introuvable`);
     }
 
-    await this.couponWashersModel.destroy({
-      where: { couponId },
-    });
+    await this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async (t) => {
+        await this.couponWashersModel.destroy({ where: { couponId }, transaction: t });
 
-    if (dto.washerIds.length > 0) {
-      const washers = dto.washerIds.map((userId) => ({
-        couponId,
-        userId,
-      }));
-      await this.couponWashersModel.bulkCreate(washers as any);
-    }
+        if (dto.washerIds.length > 0) {
+          const washers = dto.washerIds.map((userId) => ({ couponId, userId }));
+          await this.couponWashersModel.bulkCreate(washers as any, { transaction: t });
+        }
+      },
+    );
 
     return this.findOneCoupon(couponId);
   }
@@ -556,53 +542,59 @@ export class WashOperationsService {
     }
 
     const fiche = coupon.fichePiste;
-    const isCatB = false; // vehicleCategory not stored on fiche; default to A
+    const isCatB = false;
 
-    // Add extras
-    if (dto.extrasIds && dto.extrasIds.length > 0) {
-      const existingExtrasIds = (fiche.extras ?? []).map((e) => e.id);
-      const newExtrasIds = dto.extrasIds.filter((eid) => !existingExtrasIds.includes(eid));
-      if (newExtrasIds.length > 0) {
-        await this.ficheExtrasModel.bulkCreate(
-          newExtrasIds.map((serviceSpecialId) => ({ fichePisteId: fiche.id, serviceSpecialId })) as any,
-        );
+    await this.sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async (t) => {
+      // Add new extras (skip duplicates)
+      if (dto.extrasIds && dto.extrasIds.length > 0) {
+        const existingExtrasIds = (fiche.extras ?? []).map((e) => e.id);
+        const newExtrasIds = dto.extrasIds.filter((eid) => !existingExtrasIds.includes(eid));
+        if (newExtrasIds.length > 0) {
+          await this.ficheExtrasModel.bulkCreate(
+            newExtrasIds.map((serviceSpecialId) => ({ fichePisteId: fiche.id, serviceSpecialId })) as any,
+            { transaction: t },
+          );
+        }
       }
-    }
 
-    // Add wash types (stored as additional extras via pricing only — update typeLavageId if no primary yet)
-    // Recalculate montantTotal from scratch
-    const updatedFiche = await this.fichePisteModel.findByPk(fiche.id, {
-      include: [{ model: ServiceSpecial }, { model: TypeLavage }],
+      // Recalculate montantTotal from the updated fiche state
+      const updatedFiche = await this.fichePisteModel.findByPk(fiche.id, {
+        include: [{ model: ServiceSpecial }, { model: TypeLavage }],
+        transaction: t,
+      });
+      const allExtrasIds = (updatedFiche!.extras ?? []).map((e) => e.id);
+      let newTotal = 0;
+
+      const typeLavageIds: number[] = [];
+      if (updatedFiche!.typeLavageId) typeLavageIds.push(updatedFiche!.typeLavageId);
+      if (dto.typeLavageIds && dto.typeLavageIds.length > 0) {
+        for (const tid of dto.typeLavageIds) {
+          if (!typeLavageIds.includes(tid)) typeLavageIds.push(tid);
+        }
+      }
+      if (typeLavageIds.length > 0) {
+        const washTypes = await this.typeLavageModel.findAll({
+          where: { id: { [Op.in]: typeLavageIds } },
+          transaction: t,
+        });
+        newTotal += washTypes.reduce((sum, wt) =>
+          sum + (isCatB && wt.prixCatB != null ? Number(wt.prixCatB) : Number(wt.prixBase ?? 0)), 0);
+      }
+
+      if (allExtrasIds.length > 0) {
+        const extras = await this.serviceSpecialModel.findAll({
+          where: { id: { [Op.in]: allExtrasIds } },
+          transaction: t,
+        });
+        newTotal += extras.reduce((sum, e) =>
+          sum + (isCatB && e.prixCatB != null ? Number(e.prixCatB) : Number(e.prix ?? 0)), 0);
+      }
+
+      const remise = Number(coupon.remise) || 0;
+      await coupon.update({ montantTotal: Math.max(0, newTotal - remise) }, { transaction: t });
     });
-    const allExtrasIds = (updatedFiche!.extras ?? []).map((e) => e.id);
-    let newTotal = 0;
-
-    // Wash type price
-    const typeLavageIds: number[] = [];
-    if (updatedFiche!.typeLavageId) typeLavageIds.push(updatedFiche!.typeLavageId);
-    if (dto.typeLavageIds && dto.typeLavageIds.length > 0) {
-      for (const tid of dto.typeLavageIds) {
-        if (!typeLavageIds.includes(tid)) typeLavageIds.push(tid);
-      }
-    }
-    if (typeLavageIds.length > 0) {
-      const washTypes = await this.typeLavageModel.findAll({ where: { id: { [Op.in]: typeLavageIds } } });
-      newTotal += washTypes.reduce((sum, t) => {
-        return sum + (isCatB && t.prixCatB != null ? Number(t.prixCatB) : Number(t.prixBase ?? 0));
-      }, 0);
-    }
-
-    // Extras price
-    if (allExtrasIds.length > 0) {
-      const extras = await this.serviceSpecialModel.findAll({ where: { id: { [Op.in]: allExtrasIds } } });
-      newTotal += extras.reduce((sum, e) => {
-        return sum + (isCatB && e.prixCatB != null ? Number(e.prixCatB) : Number(e.prix ?? 0));
-      }, 0);
-    }
-
-    // Apply remise if any
-    const remise = Number(coupon.remise) || 0;
-    await coupon.update({ montantTotal: Math.max(0, newTotal - remise) });
 
     return this.findOneCoupon(id);
   }
@@ -636,39 +628,34 @@ export class WashOperationsService {
     });
   }
 
-  private async generateFideliteBonCode(): Promise<string> {
+  private async generateFideliteBonCode(t: Transaction): Promise<string> {
     let code: string;
     let exists: boolean;
     do {
       const random = Math.floor(Math.random() * 9999) + 1;
       code = `BON-${String(random).padStart(4, '0')}`;
-      exists = !!(await this.bonLavageModel.findOne({ where: { code } }));
+      exists = !!(await this.bonLavageModel.findOne({ where: { code }, transaction: t }));
     } while (exists);
     return code;
   }
 
-  private async generateCouponNumero(): Promise<string> {
+  private async generateCouponNumero(t: Transaction): Promise<string> {
     const lastCoupon = await this.couponModel.findOne({
       order: [['numero', 'DESC']],
       attributes: ['numero'],
+      lock: Transaction.LOCK.UPDATE,
+      transaction: t,
     });
-
-    let nextNumber = 1;
-
-    if (lastCoupon?.numero) {
-      const match = lastCoupon.numero.match(/CPN-(\d+)/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
-      }
-    }
-
-    return `CPN-${String(nextNumber).padStart(4, '0')}`;
+    const next = lastCoupon?.numero ? (parseInt(lastCoupon.numero.match(/CPN-(\d+)/)?.[1] ?? '0', 10) + 1) : 1;
+    return `CPN-${String(next).padStart(4, '0')}`;
   }
 
   // ─── Nouveau Lavage (combined Fiche + Coupon) ──────────────────────
 
   async createNouveauLavage(dto: CreateNouveauLavageDto) {
-    const transaction = await this.sequelize.transaction();
+    const transaction = await this.sequelize.transaction({
+      isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE,
+    });
 
     try {
       // 1. Resolve typeLavageId (multi-select: first ID is primary FK)
@@ -681,7 +668,7 @@ export class WashOperationsService {
       const primaryTypeLavageId = resolvedTypeIds[0] ?? null;
 
       // 2. Create FichePiste
-      const ficheNumero = await this.generateFicheNumero();
+      const ficheNumero = await this.generateFicheNumero(transaction);
       const { extrasIds, washerIds, promotionId, typeLavageIds: _tIds, typeLavageId: _tId, ...ficheBase } = dto;
 
       const fiche = await this.fichePisteModel.create(
@@ -771,7 +758,7 @@ export class WashOperationsService {
       }
 
       // 5. Create Coupon
-      const couponNumero = await this.generateCouponNumero();
+      const couponNumero = await this.generateCouponNumero(transaction);
       const coupon = await this.couponModel.create(
         {
           fichePisteId: fiche.id,

@@ -55,7 +55,7 @@ export const useUpdateCouponStatus = () => {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (args: { id: number; data: UpdateCouponStatusDto }) => couponsApi.updateStatus(args),
+        mutationFn: (args: { id: number; data: UpdateCouponStatusDto; idempotencyKey?: string }) => couponsApi.updateStatus(args),
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.lists() });
             queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.detail(variables.id) });
