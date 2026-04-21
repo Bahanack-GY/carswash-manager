@@ -32,6 +32,7 @@ import {
   CouponStatus,
 } from '../common/constants/status.enum.js';
 import { CommercialService } from '../commercial/commercial.service.js';
+import { EventsService } from '../events/events.service.js';
 import { BonLavage } from '../bonds/models/bon-lavage.model.js';
 import { Affectation } from '../users/models/affectation.model.js';
 
@@ -75,6 +76,7 @@ export class WashOperationsService {
     @InjectModel(Affectation)
     private readonly affectationModel: typeof Affectation,
     private readonly commercialService: CommercialService,
+    private readonly eventsService: EventsService,
   ) {}
 
   // ─── TypeLavage ───────────────────────────────────────────────────────
@@ -170,8 +172,11 @@ export class WashOperationsService {
       where.statut = query.statut;
     }
 
-    if (query.startDate && query.endDate) {
-      where.date = { [Op.gte]: query.startDate, [Op.lte]: query.endDate };
+    if (query.startDate || query.endDate) {
+      const dateFilter: Record<symbol, any> = {};
+      if (query.startDate) dateFilter[Op.gte] = query.startDate;
+      if (query.endDate) dateFilter[Op.lte] = query.endDate;
+      where.date = dateFilter;
     } else if (query.date) {
       where.date = query.date;
     }
@@ -313,11 +318,11 @@ export class WashOperationsService {
       couponWhere.statut = query.statut;
     }
 
-    if (query.startDate && query.endDate) {
-      couponWhere.updatedAt = {
-        [Op.gte]: new Date(`${query.startDate}T00:00:00`),
-        [Op.lte]: new Date(`${query.endDate}T23:59:59.999`),
-      };
+    if (query.startDate || query.endDate) {
+      const dateFilter: Record<symbol, any> = {};
+      if (query.startDate) dateFilter[Op.gte] = new Date(`${query.startDate}T00:00:00`);
+      if (query.endDate) dateFilter[Op.lte] = new Date(`${query.endDate}T23:59:59.999`);
+      couponWhere.createdAt = dateFilter;
     }
 
     const { rows: data, count: total } =
@@ -448,6 +453,22 @@ export class WashOperationsService {
         }
         await coupon.update(updateData, { transaction: t });
 
+        // Sync fiche de piste status with coupon status
+        if (coupon.fichePisteId) {
+          let ficheStatut: FichePisteStatus;
+          if (dto.statut === CouponStatus.Pending) {
+            ficheStatut = FichePisteStatus.Open;
+          } else if (dto.statut === CouponStatus.Washing) {
+            ficheStatut = FichePisteStatus.InProgress;
+          } else {
+            ficheStatut = FichePisteStatus.Completed;
+          }
+          await this.fichePisteModel.update(
+            { statut: ficheStatut },
+            { where: { id: coupon.fichePisteId }, transaction: t },
+          );
+        }
+
         if (dto.statut === CouponStatus.Done && coupon.washers?.length > 0) {
           const today = new Date().toISOString().split('T')[0];
           const stationId = coupon.fichePiste?.stationId;
@@ -513,6 +534,13 @@ export class WashOperationsService {
         }
       },
     );
+
+    // Broadcast status change to caisse via SSE (after transaction commits)
+    this.eventsService.emit({
+      couponId: id,
+      statut: dto.statut,
+      stationId: coupon.fichePiste?.stationId ?? null,
+    });
 
     // Confirm commercial registration after commit (best-effort, separate concern)
     if (dto.statut === CouponStatus.Paid && coupon.fichePiste?.vehicleId) {

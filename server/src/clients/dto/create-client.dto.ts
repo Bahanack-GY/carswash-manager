@@ -1,4 +1,4 @@
-import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateClientDto {
@@ -16,11 +16,6 @@ export class CreateClientDto {
   @IsOptional()
   @IsString({ message: 'Le contact doit être une chaîne de caractères' })
   contact?: string;
-
-  @ApiPropertyOptional({ example: 'mamadou@example.com' })
-  @IsOptional()
-  @IsEmail({}, { message: "L'email doit être une adresse email valide" })
-  email?: string;
 
   @ApiPropertyOptional({ example: 'Plateau' })
   @IsOptional()

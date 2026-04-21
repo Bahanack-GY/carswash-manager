@@ -16,6 +16,7 @@ import { useMarkBondAsUsed } from '@/api/bonds/queries'
 import { useIdempotencyKey } from '@/lib/idempotency'
 import type { BonLavage } from '@/api/bonds/types'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCouponEvents } from '@/hooks/useCouponEvents'
 import type { CreatePaiementDto, Paiement } from '@/api/paiements/types'
 import type { Coupon } from '@/api/coupons/types'
 
@@ -60,6 +61,9 @@ export default function Caisse() {
   const navigate = useNavigate()
   const { selectedStationId, user: authUser } = useAuth()
   const isComptable = authUser?.role === 'comptable'
+
+  // Real-time: invalidate coupon lists the moment a status change is broadcast
+  useCouponEvents(selectedStationId || undefined)
 
   const [period, setPeriod] = useState<Period>('today')
   const [customStart, setCustomStart] = useState(fmtDate(new Date()))

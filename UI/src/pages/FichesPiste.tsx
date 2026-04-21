@@ -20,6 +20,8 @@ import {
   Ticket,
   LayoutList,
   LayoutGrid,
+  CalendarDays,
+  X,
 } from '@/lib/icons'
 import { useFichesPiste } from '@/api/fiches-piste'
 import { useAuth } from '@/contexts/AuthContext'
@@ -49,14 +51,18 @@ export default function FichesPiste() {
   const [view, setView] = useState<'table' | 'grid'>('table')
   const [activeTab, setActiveTab] = useState('all')
   const [page, setPage] = useState(1)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
   /* ── Build filters for API ─────────────────────────── */
   const filters = useMemo(() => {
-    const f: { stationId?: number; statut?: 'open' | 'in_progress' | 'completed'; page: number; limit: number } = { page, limit: 20 }
+    const f: { stationId?: number; statut?: 'open' | 'in_progress' | 'completed'; page: number; limit: number; startDate?: string; endDate?: string } = { page, limit: 20 }
     if (selectedStationId) f.stationId = selectedStationId
     if (activeTab !== 'all') f.statut = activeTab as 'open' | 'in_progress' | 'completed'
+    if (startDate) f.startDate = startDate
+    if (endDate) f.endDate = endDate
     return f
-  }, [selectedStationId, activeTab, page])
+  }, [selectedStationId, activeTab, page, startDate, endDate])
 
   const { data: fichesData, isLoading, isError } = useFichesPiste(filters)
 
@@ -95,44 +101,80 @@ export default function FichesPiste() {
       </motion.div>
 
       {/* ── Search + Tabs ──────────────────────────────── */}
-      <motion.div variants={rise} className="flex flex-col md:flex-row gap-3">
-        <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-4 py-2.5 flex-1 shadow-sm focus-within:border-teal-500/40 transition-colors">
-          <Search className="w-4 h-4 text-ink-muted" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher par nom, plaque, numéro de fiche..."
-            className="bg-transparent text-sm text-ink placeholder-ink-muted outline-none flex-1"
-          />
+      <motion.div variants={rise} className="flex flex-col gap-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-4 py-2.5 flex-1 shadow-sm focus-within:border-teal-500/40 transition-colors">
+            <Search className="w-4 h-4 text-ink-muted" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher par nom, plaque, numéro de fiche..."
+              className="bg-transparent text-sm text-ink placeholder-ink-muted outline-none flex-1"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-3 py-2.5 shadow-sm focus-within:border-teal-500/40 transition-colors">
+              <CalendarDays className="w-4 h-4 text-ink-muted shrink-0" />
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => { setStartDate(e.target.value); setPage(1) }}
+                className="bg-transparent text-sm text-ink outline-none w-36"
+                title="Date début"
+              />
+            </div>
+            <span className="text-ink-muted text-sm">—</span>
+            <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-3 py-2.5 shadow-sm focus-within:border-teal-500/40 transition-colors">
+              <CalendarDays className="w-4 h-4 text-ink-muted shrink-0" />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => { setEndDate(e.target.value); setPage(1) }}
+                className="bg-transparent text-sm text-ink outline-none w-36"
+                title="Date fin"
+              />
+            </div>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(''); setEndDate(''); setPage(1) }}
+                className="p-2 rounded-xl text-ink-muted hover:text-ink hover:bg-raised transition-colors"
+                title="Effacer les dates"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex bg-raised border border-edge rounded-xl p-1 shrink-0">
-          {statusTabs.map(t => (
+        <div className="flex gap-3">
+          <div className="flex bg-raised border border-edge rounded-xl p-1 shrink-0">
+            {statusTabs.map(t => (
+              <button
+                key={t.key}
+                onClick={() => { setActiveTab(t.key); setPage(1) }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  activeTab === t.key ? 'bg-panel text-accent shadow-sm' : 'text-ink-faded hover:text-ink-light'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="hidden sm:flex items-center bg-panel border border-edge rounded-xl overflow-hidden shrink-0">
             <button
-              key={t.key}
-              onClick={() => { setActiveTab(t.key); setPage(1) }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                activeTab === t.key ? 'bg-panel text-accent shadow-sm' : 'text-ink-faded hover:text-ink-light'
-              }`}
+              onClick={() => setView('table')}
+              className={`p-2.5 transition-colors ${view === 'table' ? 'bg-teal-500/10 text-accent' : 'text-ink-muted hover:text-ink'}`}
+              title="Vue tableau"
             >
-              {t.label}
+              <LayoutList className="w-4 h-4" />
             </button>
-          ))}
-        </div>
-        <div className="hidden sm:flex items-center bg-panel border border-edge rounded-xl overflow-hidden shrink-0">
-          <button
-            onClick={() => setView('table')}
-            className={`p-2.5 transition-colors ${view === 'table' ? 'bg-teal-500/10 text-accent' : 'text-ink-muted hover:text-ink'}`}
-            title="Vue tableau"
-          >
-            <LayoutList className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setView('grid')}
-            className={`p-2.5 transition-colors ${view === 'grid' ? 'bg-teal-500/10 text-accent' : 'text-ink-muted hover:text-ink'}`}
-            title="Vue grille"
-          >
-            <LayoutGrid className="w-4 h-4" />
-          </button>
+            <button
+              onClick={() => setView('grid')}
+              className={`p-2.5 transition-colors ${view === 'grid' ? 'bg-teal-500/10 text-accent' : 'text-ink-muted hover:text-ink'}`}
+              title="Vue grille"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </motion.div>
 

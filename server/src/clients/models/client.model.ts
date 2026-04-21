@@ -47,9 +47,6 @@ export class Client extends Model {
   declare contact: string;
 
   @Column({ type: DataType.STRING })
-  declare email: string;
-
-  @Column({ type: DataType.STRING })
   declare quartier: string;
 
   @Column({ type: DataType.INTEGER, defaultValue: 0 })

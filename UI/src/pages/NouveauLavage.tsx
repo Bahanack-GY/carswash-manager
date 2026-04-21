@@ -88,7 +88,12 @@ export default function NouveauLavage() {
      ================================================================ */
   const { data: washTypesData } = useWashTypes(selectedStationId ? { stationId: selectedStationId } : undefined)
   const { data: extrasData } = useExtras(selectedStationId ? { stationId: selectedStationId } : undefined)
-  const { data: clientsData } = useClients(selectedStationId ? { stationId: selectedStationId } : undefined)
+  const [debouncedClientSearch, setDebouncedClientSearch] = useState('')
+
+  const { data: clientsData } = useClients({
+    ...(selectedStationId ? { stationId: selectedStationId } : {}),
+    ...(debouncedClientSearch ? { search: debouncedClientSearch } : {}),
+  })
   const { data: usersData } = useUsers(selectedStationId ? { stationId: selectedStationId } : undefined)
   const createClient = useCreateClient()
   const createVehicle = useCreateVehicle()
@@ -161,6 +166,11 @@ export default function NouveauLavage() {
   const [clientMode, setClientMode] = useState<'existing' | 'prospect' | 'new'>('existing')
   const isNewClient = clientMode !== 'existing'
   const [clientSearch, setClientSearch] = useState('')
+  useEffect(() => {
+    const normalized = clientSearch.trim().replace(/\s+/g, ' ')
+    const t = setTimeout(() => setDebouncedClientSearch(normalized), 350)
+    return () => clearTimeout(t)
+  }, [clientSearch])
   const [prospectSearch, setProspectSearch] = useState('')
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
   const { data: pendingProspects = [] } = useCommercialPending()
@@ -168,7 +178,6 @@ export default function NouveauLavage() {
   // New Client Form
   const [newName, setNewName] = useState('')
   const [newPhone, setNewPhone] = useState('')
-  const [newEmail, setNewEmail] = useState('')
   const [newQuartier, setNewQuartier] = useState('')
 
   // Vehicle — existing vs new
@@ -268,18 +277,37 @@ export default function NouveauLavage() {
   }, [applicablePromotions])
 
   // ── Prospect auto-detection in "new" mode ───────────────────
+  const normalizePlate = (s: string) => s.replace(/[\s-]/g, '').toUpperCase()
   const matchedProspect = useMemo(() => {
     if (clientMode !== 'new' || pendingProspects.length === 0) return null
-    const plate = vPlate.trim().toLowerCase()
+    const plate = normalizePlate(vPlate)
     const phone = newPhone.trim()
     const name = newName.trim().toLowerCase()
     return pendingProspects.find((p) => {
-      if (plate && p.immatriculation?.toLowerCase() === plate) return true
+      if (plate && normalizePlate(p.immatriculation ?? '') === plate) return true
       if (phone && p.prospectTelephone && p.prospectTelephone.replace(/\s/g, '') === phone.replace(/\s/g, '')) return true
       if (name.length >= 3 && p.prospectNom?.toLowerCase().includes(name)) return true
       return false
     }) ?? null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientMode, pendingProspects, vPlate, newPhone, newName])
+
+  // ── Auto-fill from commercial registration when plate matches ────────────
+  // When a prospect is detected by plate, override the form with the commercial's
+  // registered data so the lavage always reflects what the commercial captured.
+  useEffect(() => {
+    if (!matchedProspect) return
+    setNewName(matchedProspect.prospectNom ?? '')
+    setNewPhone(matchedProspect.prospectTelephone ?? '')
+    setNewQuartier(matchedProspect.prospectQuartier ?? '')
+    // Normalise the displayed plate to the stored registration value
+    setVPlate(matchedProspect.immatriculation ?? '')
+    if (matchedProspect.vehicleBrand)  setVBrand(matchedProspect.vehicleBrand)
+    if (matchedProspect.vehicleModele) setVModel(matchedProspect.vehicleModele)
+    if (matchedProspect.vehicleColor)  setVColor(matchedProspect.vehicleColor)
+    if (matchedProspect.vehicleType)   setVType(matchedProspect.vehicleType)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchedProspect])
 
   const selectedClientRecord = clientsList.find(c => c.id === selectedClientId)
   const clientNameDisplay = isNewClient ? newName : selectedClientRecord?.nom ?? ''
@@ -289,16 +317,12 @@ export default function NouveauLavage() {
   const dateStr = now.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
   const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 
-  const filteredClients = clientsList.filter(
-    (c) =>
-      c.nom.toLowerCase().includes(clientSearch.toLowerCase()) ||
-      (c.contact || '').includes(clientSearch),
-  )
+  const filteredClients = clientsList
 
   // ── Validation ───────────────────────────────────
   const canProceed = useMemo(() => {
     switch (step) {
-      case 0: return washIds.length > 0
+      case 0: return washIds.length > 0 || selectedExtrasIds.length > 0
       case 1: {
         const clientOk = isNewClient ? newName.trim() !== '' : selectedClientId !== null
         const vehicleOk = isNewVehicle ? vPlate.trim() !== '' : selectedVehicleId !== null
@@ -308,10 +332,18 @@ export default function NouveauLavage() {
       case 3: return pickedWasherIds.length > 0
       default: return false
     }
-  }, [step, washIds, isNewClient, newName, newPhone, selectedClientId, pickedWasherIds, vPlate, isNewVehicle, selectedVehicleId])
+  }, [step, washIds, selectedExtrasIds, isNewClient, newName, newPhone, selectedClientId, pickedWasherIds, vPlate, isNewVehicle, selectedVehicleId])
 
   // ── Derived: selected existing vehicle record ───
   const selectedVehicleRecord = (clientVehicles || []).find((v: Vehicle) => v.id === selectedVehicleId)
+
+  // Check if the selected existing vehicle matches a pending commercial registration
+  const matchedProspectForExistingVehicle = useMemo(() => {
+    if (clientMode !== 'existing' || !selectedVehicleRecord || pendingProspects.length === 0) return null
+    const plate = normalizePlate(selectedVehicleRecord.immatriculation ?? '')
+    if (!plate) return null
+    return pendingProspects.find((p) => normalizePlate(p.immatriculation ?? '') === plate) ?? null
+  }, [clientMode, selectedVehicleRecord, pendingProspects])
 
   // Vehicle display
   const vehicleBrandDisplay = isNewVehicle ? (vBrand || 'Inconnu') : (selectedVehicleRecord?.brand || 'Inconnu')
@@ -329,7 +361,6 @@ export default function NouveauLavage() {
         const newC = await createClient.mutateAsync({
           nom: newName,
           contact: newPhone,
-          email: newEmail,
           quartier: newQuartier || undefined,
           stationId: selectedStationId || undefined,
         })
@@ -706,7 +737,7 @@ export default function NouveauLavage() {
                             <input
                               value={clientSearch}
                               onChange={(e) => setClientSearch(e.target.value)}
-                              placeholder="Rechercher par nom ou téléphone..."
+                              placeholder="Rechercher par nom, téléphone ou immatriculation..."
                               className="bg-transparent text-sm text-ink placeholder-ink-muted outline-none flex-1"
                             />
                           </div>
@@ -772,7 +803,6 @@ export default function NouveauLavage() {
                                   onClick={() => {
                                     setNewName(p.prospectNom)
                                     setNewPhone(p.prospectTelephone)
-                                    setNewEmail(p.prospectEmail ?? '')
                                     setNewQuartier(p.prospectQuartier ?? '')
                                     setVPlate(p.immatriculation)
                                     setVBrand(p.vehicleBrand ?? '')
@@ -836,10 +866,6 @@ export default function NouveauLavage() {
                           <div>
                             <label className="block text-xs font-medium text-ink-light mb-1.5">Téléphone</label>
                             <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+221 7X XXX XXXX" className={inputCls} />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-ink-light mb-1.5">Email</label>
-                            <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@exemple.com" className={inputCls} />
                           </div>
                           <div>
                             <label className="flex items-center gap-1 text-xs font-medium text-ink-light mb-1.5">
@@ -909,6 +935,23 @@ export default function NouveauLavage() {
                             </div>
                           ) : (
                             <p className="text-sm text-ink-muted py-4 text-center">Aucun véhicule enregistré</p>
+                          )}
+                          {matchedProspectForExistingVehicle && (
+                            <div className="flex items-start gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl mt-2">
+                              <span className="text-amber-500 mt-0.5 shrink-0 text-base">⚡</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Prospect reconnu</p>
+                                <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+                                  Ce véhicule correspond au prospect <span className="font-medium">{matchedProspectForExistingVehicle.prospectNom}</span> enregistré par{' '}
+                                  <span className="font-medium">
+                                    {matchedProspectForExistingVehicle.commercial
+                                      ? `${matchedProspectForExistingVehicle.commercial.prenom} ${matchedProspectForExistingVehicle.commercial.nom}`
+                                      : `Commercial #${matchedProspectForExistingVehicle.commercialId}`}
+                                  </span>.
+                                  La commission sera attribuée automatiquement.
+                                </p>
+                              </div>
+                            </div>
                           )}
                           <button
                             onClick={() => { setIsNewVehicle(true); setSelectedVehicleId(null) }}
@@ -1425,24 +1468,36 @@ export default function NouveauLavage() {
           <div className="bg-panel border border-edge shadow-sm rounded-2xl p-5 sticky top-6">
             <h3 className="font-heading font-semibold text-ink mb-4">Résumé de la commande</h3>
 
-            {selectedWashes.length > 0 ? (
+            {selectedWashes.length === 0 && selectedExtras.length === 0 ? (
+              <div className="mb-4 bg-inset/30 rounded-xl px-4 py-6 text-center">
+                <Droplets className="w-6 h-6 text-ink-muted mx-auto mb-1" />
+                <p className="text-xs text-ink-muted">Aucun service sélectionné</p>
+              </div>
+            ) : (
               <div className="mb-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[10px] font-bold text-ink-faded uppercase tracking-widest">Formules</p>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                    vehicleCategory === 'A' ? 'bg-teal-500/15 text-teal-600' : 'bg-amber-500/15 text-amber-600'
-                  }`}>Cat {vehicleCategory}</span>
-                </div>
-                <div className="space-y-1">
-                  {selectedWashes.map((w) => (
-                    <div key={w.id} className="flex items-center justify-between bg-inset rounded-xl px-3 py-2.5">
-                      <span className="text-sm font-medium text-ink">{w.nom}</span>
-                      <span className="text-sm font-semibold text-accent">{washPrice(w).toLocaleString()} F</span>
+                {selectedWashes.length > 0 && (
+                  <>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[10px] font-bold text-ink-faded uppercase tracking-widest">Formules</p>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        vehicleCategory === 'A' ? 'bg-teal-500/15 text-teal-600' : 'bg-amber-500/15 text-amber-600'
+                      }`}>Cat {vehicleCategory}</span>
                     </div>
-                  ))}
-                </div>
+                    <div className="space-y-1">
+                      {selectedWashes.map((w) => (
+                        <div key={w.id} className="flex items-center justify-between bg-inset rounded-xl px-3 py-2.5">
+                          <span className="text-sm font-medium text-ink">{w.nom}</span>
+                          <span className="text-sm font-semibold text-accent">{washPrice(w).toLocaleString()} F</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
                 {selectedExtras.length > 0 && (
-                  <div className="mt-2 space-y-1">
+                  <div className={`space-y-1 ${selectedWashes.length > 0 ? 'mt-2' : ''}`}>
+                    {selectedWashes.length === 0 && (
+                      <p className="text-[10px] font-bold text-ink-faded uppercase tracking-widest mb-1.5">Services spéciaux</p>
+                    )}
                     {selectedExtras.map((e: any) => (
                       <div key={e.id} className="flex justify-between text-xs px-3 py-1.5 text-ink-faded">
                         <span>+ {e.nom}</span>
@@ -1451,11 +1506,6 @@ export default function NouveauLavage() {
                     ))}
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="mb-4 bg-inset/30 rounded-xl px-4 py-6 text-center">
-                <Droplets className="w-6 h-6 text-ink-muted mx-auto mb-1" />
-                <p className="text-xs text-ink-muted">Aucun service sélectionné</p>
               </div>
             )}
 

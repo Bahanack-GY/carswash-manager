@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { Op, fn, col } from 'sequelize';
+import { Op, fn, col, literal } from 'sequelize';
 import { Paiement } from '../billing/models/paiement.model.js';
 import { FichePiste } from '../wash-operations/models/fiche-piste.model.js';
 import { Coupon } from '../wash-operations/models/coupon.model.js';
@@ -52,15 +52,24 @@ export class DashboardService {
   async getStats(stationId: number, range: { start: Date; end: Date; startStr: string; endStr: string }) {
     const { start, end, startStr, endStr } = range;
 
-    const [revenue, expenses, vehicules, lavagesActifs, reservations] =
+    const [revenueRows, expenses, vehicules, lavagesActifs, reservations] =
       await Promise.all([
-        this.paiementModel.sum('montant', {
-          where: {
-            stationId,
-            type: TransactionType.Income,
-            createdAt: { [Op.gte]: start, [Op.lt]: end },
-          },
-        }),
+        this.paiementModel.findAll({
+          attributes: [[fn('SUM', col('Paiement.montant')), 'total']],
+          where: { stationId, type: TransactionType.Income },
+          include: [{
+            model: Coupon,
+            required: true,
+            attributes: [],
+            include: [{
+              model: FichePiste,
+              required: true,
+              attributes: [],
+              where: { date: { [Op.gte]: startStr, [Op.lte]: endStr } },
+            }],
+          }],
+          raw: true,
+        }) as unknown as Promise<{ total: string }[]>,
 
         this.paiementModel.sum('montant', {
           where: {
@@ -94,8 +103,10 @@ export class DashboardService {
         }),
       ]);
 
+    const revenue = parseFloat((revenueRows as any)[0]?.total ?? '0') || 0;
+
     return {
-      revenue: revenue ?? 0,
+      revenue,
       expenses: expenses ?? 0,
       vehicules,
       lavagesActifs,
@@ -327,20 +338,28 @@ export class DashboardService {
     startStr: string,
     endStr: string,
   ): Promise<{ date: string; amount: number }[]> {
-    const where: any = {
-      type: TransactionType.Income,
-      createdAt: { [Op.gte]: start, [Op.lt]: end },
-    };
+    const where: any = { type: TransactionType.Income };
     if (stationId) where.stationId = stationId;
 
     const rows = (await this.paiementModel.findAll({
       where,
       attributes: [
-        [fn('DATE', col('createdAt')), 'date'],
-        [fn('SUM', col('montant')), 'amount'],
+        [literal('"coupon->fichePiste"."date"'), 'date'],
+        [fn('SUM', col('Paiement.montant')), 'amount'],
       ],
-      group: [fn('DATE', col('createdAt'))],
-      order: [[fn('DATE', col('createdAt')), 'ASC']],
+      include: [{
+        model: Coupon,
+        required: true,
+        attributes: [],
+        include: [{
+          model: FichePiste,
+          required: true,
+          attributes: [],
+          where: { date: { [Op.gte]: startStr, [Op.lte]: endStr } },
+        }],
+      }],
+      group: ['"coupon->fichePiste"."date"'],
+      order: [[literal('"coupon->fichePiste"."date"'), 'ASC']],
       raw: true,
     })) as unknown as { date: string; amount: string }[];
 
@@ -362,14 +381,24 @@ export class DashboardService {
   async getGlobalStats(range: { start: Date; end: Date; startStr: string; endStr: string }) {
     const { start, end, startStr, endStr } = range;
 
-    const [totalRevenue, totalExpenses, totalVehicules, totalLavagesActifs, totalReservations, stationCount, incidentCount] =
+    const [globalRevenueRows, totalExpenses, totalVehicules, totalLavagesActifs, totalReservations, stationCount, incidentCount] =
       await Promise.all([
-        this.paiementModel.sum('montant', {
-          where: {
-            type: TransactionType.Income,
-            createdAt: { [Op.gte]: start, [Op.lt]: end },
-          },
-        }),
+        this.paiementModel.findAll({
+          attributes: [[fn('SUM', col('Paiement.montant')), 'total']],
+          where: { type: TransactionType.Income },
+          include: [{
+            model: Coupon,
+            required: true,
+            attributes: [],
+            include: [{
+              model: FichePiste,
+              required: true,
+              attributes: [],
+              where: { date: { [Op.gte]: startStr, [Op.lte]: endStr } },
+            }],
+          }],
+          raw: true,
+        }) as unknown as Promise<{ total: string }[]>,
 
         this.paiementModel.sum('montant', {
           where: {
@@ -403,8 +432,10 @@ export class DashboardService {
         }),
       ]);
 
+    const totalRevenue = parseFloat((globalRevenueRows as any)[0]?.total ?? '0') || 0;
+
     return {
-      totalRevenue: totalRevenue ?? 0,
+      totalRevenue,
       totalExpenses: totalExpenses ?? 0,
       totalVehicules,
       totalLavagesActifs,
@@ -441,15 +472,24 @@ export class DashboardService {
 
     const rankings = await Promise.all(
       stations.map(async (station) => {
-        const [revenue, vehicules, reservations, incidentCount] =
+        const [rankingRevenueRows, vehicules, reservations, incidentCount] =
           await Promise.all([
-            this.paiementModel.sum('montant', {
-              where: {
-                stationId: station.id,
-                type: TransactionType.Income,
-                createdAt: { [Op.gte]: start, [Op.lt]: end },
-              },
-            }),
+            this.paiementModel.findAll({
+              attributes: [[fn('SUM', col('Paiement.montant')), 'total']],
+              where: { stationId: station.id, type: TransactionType.Income },
+              include: [{
+                model: Coupon,
+                required: true,
+                attributes: [],
+                include: [{
+                  model: FichePiste,
+                  required: true,
+                  attributes: [],
+                  where: { date: { [Op.gte]: startStr, [Op.lte]: endStr } },
+                }],
+              }],
+              raw: true,
+            }) as unknown as Promise<{ total: string }[]>,
             this.fichePisteModel.count({
               where: { stationId: station.id, date: { [Op.gte]: startStr, [Op.lte]: endStr } },
             }),
@@ -468,10 +508,12 @@ export class DashboardService {
             }),
           ]);
 
+        const revenue = parseFloat((rankingRevenueRows as any)[0]?.total ?? '0') || 0;
+
         return {
           stationId: station.id,
           stationName: station.nom,
-          revenue: revenue ?? 0,
+          revenue,
           vehicules,
           reservations,
           hasIncident: incidentCount > 0,

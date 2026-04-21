@@ -1,7 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
-import { Op, Transaction } from 'sequelize';
+import { Op, Transaction, literal } from 'sequelize';
 import { CommercialRegistration } from './models/commercial-registration.model.js';
 import { Vehicle } from '../clients/models/vehicle.model.js';
 import { Client } from '../clients/models/client.model.js';
@@ -38,7 +38,7 @@ export class CommercialService {
   ) {}
 
   async registerVehicle(commercialId: number, stationId: number, dto: RegisterVehicleDto) {
-    const plate = dto.immatriculation.trim();
+    const plate = dto.immatriculation.trim().replace(/[\s-]/g, '').toUpperCase();
     const today = new Date().toISOString().slice(0, 10);
     // Only block duplicates registered within the last 7 days to avoid stale pending records accumulating
     const sevenDaysAgo = new Date();
@@ -49,11 +49,14 @@ export class CommercialService {
       { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
       async (t) => {
         // Lock matching rows so concurrent registrations for the same plate are serialized
+        // Normalize stored plate too (handles legacy data that may have kept hyphens)
         const existing = await this.registrationModel.findOne({
           where: {
-            immatriculation: { [Op.iLike]: plate },
-            confirmed: false,
-            date: { [Op.gte]: sevenDaysAgoStr },
+            [Op.and]: [
+              literal(`REPLACE(REPLACE(immatriculation, ' ', ''), '-', '') ILIKE '${plate}'`),
+              { confirmed: false },
+              { date: { [Op.gte]: sevenDaysAgoStr } },
+            ],
           },
           lock: Transaction.LOCK.UPDATE,
           transaction: t,
@@ -66,7 +69,7 @@ export class CommercialService {
 
         const registration = await this.registrationModel.create({
           commercialId,
-          immatriculation: plate.toUpperCase(),
+          immatriculation: plate,
           prospectNom: dto.prospectNom.trim(),
           prospectTelephone: dto.prospectTelephone.trim(),
           prospectEmail: dto.prospectEmail?.trim() || null,
@@ -139,9 +142,11 @@ export class CommercialService {
     if (filters?.status === 'pending') where.confirmed = false;
 
     if (filters?.search) {
-      const term = `%${filters.search.trim()}%`;
+      const s = filters.search.trim().replace(/'/g, "''");
+      const sNoSpaces = s.replace(/ /g, '');
+      const term = `%${s}%`;
       where[Op.or as any] = [
-        { immatriculation: { [Op.iLike]: term } },
+        literal(`REPLACE(immatriculation, ' ', '') ILIKE '%${sNoSpaces}%'`),
         { prospectNom: { [Op.iLike]: term } },
         { prospectTelephone: { [Op.iLike]: term } },
       ];
@@ -166,8 +171,15 @@ export class CommercialService {
       { isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE },
       async (t) => {
         // SELECT FOR UPDATE prevents two concurrent lavages from confirming the same prospect
+        // Strip spaces AND hyphens so "DK-1234-AB", "DK 1234 AB", "DK1234AB" all match
+        const normalizedPlate = plate.trim().replace(/[\s-]/g, '').toUpperCase();
         const registration = await this.registrationModel.findOne({
-          where: { immatriculation: { [Op.iLike]: plate.trim() }, confirmed: false },
+          where: {
+            [Op.and]: [
+              literal(`REPLACE(REPLACE(immatriculation, ' ', ''), '-', '') ILIKE '${normalizedPlate}'`),
+              { confirmed: false },
+            ],
+          },
           order: [['createdAt', 'ASC']],
           lock: Transaction.LOCK.UPDATE,
           transaction: t,

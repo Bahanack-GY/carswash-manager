@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import {
   Ticket, ArrowLeft, User, Car, Droplets, MapPin, ShieldCheck,
   Clock, Loader2, CheckCircle2, CreditCard, Banknote, Smartphone,
-  Play, Square, Wallet, Users, Phone, Mail, Sparkles, Printer, Zap,
+  Play, Square, Wallet, Users, Phone, Sparkles, Printer, Zap,
   Plus, ClipboardList, X, Search,
 } from '@/lib/icons'
 import Logo from '@/assets/Logo.png'
@@ -226,11 +226,6 @@ export default function CouponDetail() {
                 {client?.contact && (
                   <p className="text-sm text-ink-light flex items-center gap-1.5 mt-1.5">
                     <Phone className="w-3.5 h-3.5 text-ink-muted" /> {client.contact}
-                  </p>
-                )}
-                {client?.email && (
-                  <p className="text-sm text-ink-light flex items-center gap-1.5 mt-1">
-                    <Mail className="w-3.5 h-3.5 text-ink-muted" /> {client.email}
                   </p>
                 )}
               </div>

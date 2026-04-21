@@ -18,6 +18,7 @@ import { MarketingModule } from './marketing/marketing.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { BondsModule } from './bonds/bonds.module.js';
 import { ChatbotModule } from './chatbot/chatbot.module.js';
+import { EventsModule } from './events/events.module.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { RolesGuard } from './common/guards/roles.guard.js';
 import { StationAccessGuard } from './common/guards/station-access.guard.js';
@@ -47,6 +48,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor.js';
     AuditModule,
     BondsModule,
     ChatbotModule,
+    EventsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -363,7 +363,7 @@ function CreateReservationModal({
 
   /* ── Inline client creation ────────────────────────── */
   const [showCreateClient, setShowCreateClient] = useState(false)
-  const [newClient, setNewClient] = useState({ nom: '', contact: '', email: '' })
+  const [newClient, setNewClient] = useState({ nom: '', contact: '' })
   const [newVehicle, setNewVehicle] = useState({ immatriculation: '', brand: '', modele: '', color: '' })
 
   /* ── Vehicles for selected client ──────────────────── */
@@ -410,7 +410,6 @@ function CreateReservationModal({
       const client = await createClient.mutateAsync({
         nom: newClient.nom,
         contact: newClient.contact || undefined,
-        email: newClient.email || undefined,
         stationId: selectedStationId || undefined,
       })
       const vehicle = await createVehicle.mutateAsync({
@@ -425,7 +424,7 @@ function CreateReservationModal({
       setSelectedClientId(client.id)
       setSelectedVehicleId(vehicle.id)
       setShowCreateClient(false)
-      setNewClient({ nom: '', contact: '', email: '' })
+      setNewClient({ nom: '', contact: '' })
       setNewVehicle({ immatriculation: '', brand: '', modele: '', color: '' })
       toast.success(`${client.nom} créé avec le véhicule ${vehicle.immatriculation}`)
     } catch {
@@ -517,17 +516,6 @@ function CreateReservationModal({
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-ink-light mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={newClient.email}
-                    onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
-                    className={inputCls}
-                    placeholder="client@email.com"
-                  />
-                </div>
-
                 {/* Vehicle info */}
                 <div className="pt-3 border-t border-divider">
                   <p className="text-xs font-semibold text-ink-faded uppercase tracking-wider mb-2 flex items-center gap-1.5">

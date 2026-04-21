@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import {
   Users, Search, Plus, Phone, Car, Award, CreditCard,
-  ChevronRight, ChevronLeft, X, Mail, Palette, Tag, Truck,
+  ChevronRight, ChevronLeft, X, Palette, Tag, Truck,
   SlidersHorizontal, CalendarDays, MapPin, Download,
   LayoutGrid, LayoutList, Calendar,
 } from '@/lib/icons'
@@ -108,11 +108,10 @@ export default function Clients() {
         dateTo: dateTo || undefined,
       })
 
-      const headers = ['Nom', 'Téléphone', 'Email', 'Quartier', 'Type(s) véhicule', 'Points fidélité', 'Date inscription']
+      const headers = ['Nom', 'Téléphone', 'Quartier', 'Type(s) véhicule', 'Points fidélité', 'Date inscription']
       const rows = clients.map(c => [
         c.nom,
         c.contact || '',
-        c.email || '',
         c.quartier || '',
         c.vehicleTypes || '',
         String(c.pointsFidelite ?? 0),
@@ -271,7 +270,7 @@ export default function Clients() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher par nom, téléphone, email, marque, modèle..."
+                placeholder="Rechercher par nom, téléphone, marque, modèle..."
                 className="bg-transparent text-sm text-ink placeholder-ink-muted outline-none flex-1"
               />
             </div>
@@ -476,11 +475,6 @@ export default function Clients() {
                                   <Phone className="w-3 h-3 shrink-0" /> {c.contact}
                                 </p>
                               )}
-                              {c.email && (
-                                <p className="text-xs text-ink-faded flex items-center gap-1 truncate max-w-[180px]">
-                                  <Mail className="w-3 h-3 shrink-0" /> {c.email}
-                                </p>
-                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-xs text-ink-muted hidden md:table-cell">
@@ -541,11 +535,6 @@ export default function Clients() {
                           {c.contact && (
                             <p className="text-xs text-ink-faded flex items-center gap-1.5 mt-1">
                               <Phone className="w-3 h-3" /> {c.contact}
-                            </p>
-                          )}
-                          {c.email && (
-                            <p className="text-xs text-ink-faded flex items-center gap-1.5 mt-0.5">
-                              <Mail className="w-3 h-3" /> {c.email}
                             </p>
                           )}
                         </div>
@@ -623,7 +612,7 @@ function CreateClientModal({ onClose, stationId }: { onClose: () => void; statio
   const createClient = useCreateClient()
   const createVehicle = useCreateVehicle()
 
-  const [formData, setFormData] = useState<CreateClientDto>({ nom: '', contact: '', email: '', quartier: '' })
+  const [formData, setFormData] = useState<CreateClientDto>({ nom: '', contact: '', quartier: '' })
   const [addVehicle, setAddVehicle] = useState(false)
   const [vehicleData, setVehicleData] = useState<CreateVehicleDto>({
     immatriculation: '', modele: '', brand: '', color: '', type: '',
@@ -689,31 +678,17 @@ function CreateClientModal({ onClose, stationId }: { onClose: () => void; statio
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="flex items-center gap-1 text-xs font-semibold text-ink-faded uppercase tracking-wider mb-1.5">
-                <Phone className="w-3 h-3" /> Téléphone
-              </label>
-              <input
-                type="text"
-                value={formData.contact}
-                onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-                className={inputCls}
-                placeholder="+221 77 ..."
-              />
-            </div>
-            <div>
-              <label className="flex items-center gap-1 text-xs font-semibold text-ink-faded uppercase tracking-wider mb-1.5">
-                <Mail className="w-3 h-3" /> Email
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className={inputCls}
-                placeholder="client@email.com"
-              />
-            </div>
+          <div>
+            <label className="flex items-center gap-1 text-xs font-semibold text-ink-faded uppercase tracking-wider mb-1.5">
+              <Phone className="w-3 h-3" /> Téléphone
+            </label>
+            <input
+              type="text"
+              value={formData.contact}
+              onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
+              className={inputCls}
+              placeholder="+221 77 ..."
+            />
           </div>
 
           <div>

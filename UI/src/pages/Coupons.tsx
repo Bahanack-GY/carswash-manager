@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Ticket, Search, Plus, User, Car, CheckCircle2, Clock, Loader2, Droplets, LayoutList, LayoutGrid, ChevronRight } from '@/lib/icons'
-import { useCoupons, useUpdateCouponStatus } from '@/api/coupons'
+import { Ticket, Search, Plus, User, Car, CheckCircle2, Clock, Loader2, Droplets, LayoutList, LayoutGrid, ChevronRight, ChevronLeft, CalendarDays, X } from '@/lib/icons'
+import { useCoupons } from '@/api/coupons'
 import type { Coupon } from '@/api/coupons/types'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -36,36 +36,52 @@ export default function Coupons() {
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'table' | 'grid'>('table')
   const [activeTab, setActiveTab] = useState('Tous')
+  const [page, setPage] = useState(1)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const LIMIT = 20
   const navigate = useNavigate()
 
   const { selectedStationId } = useAuth()
 
+  // Reset page when tab, search or dates change
+  useEffect(() => { setPage(1) }, [activeTab, search, startDate, endDate])
+
+  // Build filters: pass statut to API when a specific tab is selected
+  const activeStatut = TAB_STATUS_MAP[activeTab] as string | null
+  const queryFilters = {
+    ...(selectedStationId ? { stationId: selectedStationId } : {}),
+    ...(activeStatut ? { statut: activeStatut as 'pending' | 'washing' | 'done' | 'paid' } : {}),
+    ...(startDate ? { startDate } : {}),
+    ...(endDate ? { endDate } : {}),
+    page,
+    limit: LIMIT,
+  }
+
   // Queries & Mutations
-  const { data: couponsData, isLoading, isError } = useCoupons(selectedStationId ? { stationId: selectedStationId } : undefined)
-  const updateStatus = useUpdateCouponStatus()
-
+  const { data: couponsData, isLoading, isError } = useCoupons(queryFilters)
   const couponsList: Coupon[] = couponsData?.data || []
+  const total = Number(couponsData?.total ?? 0)
+  const totalPages = total > 0 ? Math.ceil(total / LIMIT) : 1
 
-  // Counts per tab
+  // Tab counts: show total from API for the active tab, nothing for others
   const tabCounts = useMemo(() => {
-    const counts: Record<string, number> = { 'Tous': couponsList.length }
-    for (const [tab, status] of Object.entries(TAB_STATUS_MAP)) {
-      if (status) counts[tab] = couponsList.filter(c => c.statut === status).length
+    const counts: Record<string, number> = {}
+    for (const tab of tabs) {
+      counts[tab] = tab === activeTab ? total : 0
     }
     return counts
-  }, [couponsList])
+  }, [activeTab, total])
 
-  // Filtering
+  // Search filtering within the current page
   const filtered = couponsList.filter((c) => {
     const q = search.toLowerCase()
-    const matchSearch =
+    return (
       !q ||
       (c.numero || '').toLowerCase().includes(q) ||
       (c.fichePiste?.client?.nom || '').toLowerCase().includes(q) ||
       (c.fichePiste?.vehicle?.immatriculation || '').toLowerCase().includes(q)
-    const tabStatus = TAB_STATUS_MAP[activeTab]
-    const matchTab = tabStatus === null || c.statut === tabStatus
-    return matchSearch && matchTab
+    )
   })
 
   return (
@@ -83,15 +99,49 @@ export default function Coupons() {
         </button>
       </motion.div>
 
-      <motion.div variants={rise} className="flex flex-col md:flex-row gap-3">
-        <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-4 py-2.5 flex-1 shadow-sm focus-within:border-teal-500/40 transition-colors">
-          <Search className="w-4 h-4 text-ink-muted" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher par numéro, client ou immatriculation..."
-            className="bg-transparent text-sm text-ink placeholder-ink-muted outline-none flex-1"
-          />
+      <motion.div variants={rise} className="flex flex-col gap-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-4 py-2.5 flex-1 shadow-sm focus-within:border-teal-500/40 transition-colors">
+            <Search className="w-4 h-4 text-ink-muted" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher par numéro, client ou immatriculation..."
+              className="bg-transparent text-sm text-ink placeholder-ink-muted outline-none flex-1"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-3 py-2.5 shadow-sm focus-within:border-teal-500/40 transition-colors">
+              <CalendarDays className="w-4 h-4 text-ink-muted shrink-0" />
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-transparent text-sm text-ink outline-none w-36"
+                title="Date début"
+              />
+            </div>
+            <span className="text-ink-muted text-sm">—</span>
+            <div className="flex items-center gap-2 bg-panel border border-edge rounded-xl px-3 py-2.5 shadow-sm focus-within:border-teal-500/40 transition-colors">
+              <CalendarDays className="w-4 h-4 text-ink-muted shrink-0" />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-transparent text-sm text-ink outline-none w-36"
+                title="Date fin"
+              />
+            </div>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(''); setEndDate('') }}
+                className="p-2 rounded-xl text-ink-muted hover:text-ink hover:bg-raised transition-colors"
+                title="Effacer les dates"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 overflow-x-auto">
           <div className="hidden sm:flex items-center bg-panel border border-edge rounded-xl overflow-hidden shrink-0">
@@ -122,11 +172,11 @@ export default function Coupons() {
                   }`}
                 >
                   {t}
-                  <span className={`text-[10px] min-w-[18px] text-center px-1 py-0.5 rounded-md ${
-                    activeTab === t ? 'bg-accent-wash text-accent' : 'bg-dim text-ink-muted'
-                  }`}>
-                    {count}
-                  </span>
+                  {activeTab === t && (
+                    <span className="text-[10px] min-w-[18px] text-center px-1 py-0.5 rounded-md bg-accent-wash text-accent">
+                      {count}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -205,19 +255,10 @@ export default function Coupons() {
                       <span className="text-xs font-semibold text-accent">{montant.toLocaleString()} F</span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const nextStatus = c.statut === 'pending' ? 'washing' : c.statut === 'washing' ? 'done' : 'pending'
-                          updateStatus.mutate({ id: c.id, data: { statut: nextStatus }, idempotencyKey: `coupon-${c.id}-${nextStatus}` })
-                        }}
-                        disabled={updateStatus.isPending}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border hover:opacity-80 disabled:opacity-50 ${st.cls}`}
-                        title="Changer le statut"
-                      >
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border ${st.cls}`}>
                         <StIcon className={`w-3 h-3 ${c.statut === 'washing' ? 'animate-spin' : ''}`} />
                         {st.label}
-                      </button>
+                      </span>
                     </td>
                     <td className="px-3 py-3">
                       <ChevronRight className="w-4 h-4 text-ink-ghost group-hover:text-accent transition-colors" />
@@ -253,19 +294,10 @@ export default function Coupons() {
                 <div className="px-5 pt-5 pb-3 border-b border-dashed border-edge">
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-lg font-bold text-accent">{c.numero}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        const nextStatus = c.statut === 'pending' ? 'washing' : c.statut === 'washing' ? 'done' : 'pending';
-                        updateStatus.mutate({ id: c.id, data: { statut: nextStatus }, idempotencyKey: `coupon-${c.id}-${nextStatus}` })
-                      }}
-                      disabled={updateStatus.isPending}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border cursor-pointer hover:opacity-80 disabled:opacity-50 ${st.cls}`}
-                      title="Cliquez pour changer le statut"
-                    >
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${st.cls}`}>
                       <StIcon className={`w-3 h-3 ${c.statut === 'washing' ? 'animate-spin' : ''}`} />
                       {st.label}
-                    </button>
+                    </span>
                   </div>
                   <p className="text-xs text-ink-muted mt-1">{displayDate} — {displayTime}</p>
                 </div>
@@ -304,6 +336,69 @@ export default function Coupons() {
               </motion.div>
             )
           })}
+        </motion.div>
+      )}
+
+      {/* Pagination Controls */}
+      {!isLoading && !isError && (couponsList.length === LIMIT || page > 1) && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="flex items-center justify-between pt-2">
+          <p className="text-xs text-ink-muted">
+            Page {page} sur {totalPages} — {total} coupon{total !== 1 ? 's' : ''}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+              className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-raised disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-medium px-2"
+            >
+              «
+            </button>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-raised disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+              .reduce<(number | 'ellipsis')[]>((acc, p, idx, arr) => {
+                if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('ellipsis')
+                acc.push(p)
+                return acc
+              }, [])
+              .map((p, idx) =>
+                p === 'ellipsis' ? (
+                  <span key={`ellipsis-${idx}`} className="px-1 text-ink-muted text-sm">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p as number)}
+                    className={`min-w-[32px] h-8 rounded-lg text-sm font-medium transition-colors ${
+                      page === p
+                        ? 'bg-teal-500 text-white shadow-sm'
+                        : 'text-ink-muted hover:text-ink hover:bg-raised'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-raised disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+              className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-raised disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-medium px-2"
+            >
+              »
+            </button>
+          </div>
         </motion.div>
       )}
     </motion.div>

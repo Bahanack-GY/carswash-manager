@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  ArrowLeft, Phone, Mail, Car, Award, Droplets, Wallet,
+  ArrowLeft, Phone, Car, Award, Droplets, Wallet,
   Calendar, CreditCard, Tag, Palette, Truck, Loader2, MapPin,
 } from '@/lib/icons'
 import {
@@ -154,11 +154,6 @@ export default function ClientDetail() {
               {client.contact && (
                 <span className="text-sm text-ink-faded flex items-center gap-1.5">
                   <Phone className="w-3.5 h-3.5" /> {client.contact}
-                </span>
-              )}
-              {client.email && (
-                <span className="text-sm text-ink-faded flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5" /> {client.email}
                 </span>
               )}
               {client.quartier && (

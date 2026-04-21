@@ -3,7 +3,6 @@ export interface Client {
     stationId?: number;
     nom: string;
     contact?: string;
-    email?: string;
     quartier?: string;
     pointsFidelite?: number;
     vehicleCount?: number;
@@ -26,7 +25,6 @@ export interface PaginatedClients {
 export interface CreateClientDto {
     nom: string;
     contact?: string;
-    email?: string;
     quartier?: string;
     stationId?: number;
 }

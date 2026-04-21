@@ -79,7 +79,7 @@ export default function AdminClients() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher par nom, téléphone ou email..."
+            placeholder="Rechercher par nom ou téléphone..."
             className="bg-transparent text-sm text-ink placeholder-ink-muted outline-none flex-1"
           />
           {search && (
@@ -128,10 +128,6 @@ export default function AdminClients() {
                     </div>
                     <ChevronNav className="w-4 h-4 text-ink-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
-
-                  {c.email && (
-                    <p className="text-xs text-ink-light mb-3 truncate">{c.email}</p>
-                  )}
 
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="bg-inset rounded-lg p-2 text-center">

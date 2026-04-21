@@ -7,7 +7,10 @@ import {
   Body,
   Query,
   ParseIntPipe,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
+import { Observable, map } from 'rxjs';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -23,6 +26,7 @@ import { AssignWashersDto } from './dto/assign-washers.dto.js';
 import { AddServicesToCouponDto } from './dto/add-services-to-coupon.dto.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { CouponStatus } from '../common/constants/status.enum.js';
+import { EventsService } from '../events/events.service.js';
 
 @ApiTags('Coupons')
 @ApiBearerAuth()
@@ -31,6 +35,7 @@ export class CouponsController {
   constructor(
     private readonly washOpsService: WashOperationsService,
     private readonly auditService: AuditService,
+    private readonly eventsService: EventsService,
   ) {}
 
   @Get()
@@ -92,6 +97,17 @@ export class CouponsController {
   })
   async findMyAssigned(@CurrentUser() user: any) {
     return this.washOpsService.findMyAssigned(user.id);
+  }
+
+  @Sse('events')
+  @ApiOperation({ summary: 'Flux SSE des changements de statut des coupons' })
+  @ApiQuery({ name: 'stationId', required: false, type: Number })
+  streamEvents(
+    @Query('stationId') stationId?: number,
+  ): Observable<MessageEvent> {
+    return this.eventsService
+      .stream(stationId ? Number(stationId) : undefined)
+      .pipe(map((data) => ({ data }) as MessageEvent));
   }
 
   @Get(':id')

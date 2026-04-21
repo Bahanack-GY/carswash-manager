@@ -43,14 +43,14 @@ export class ClientsService {
 
     if (query.search) {
       const s = query.search.replace(/'/g, "''");
+      const sNoSpaces = s.replace(/ /g, '');
       where[Op.or as any] = [
-        { nom: { [Op.iLike]: `%${query.search}%` } },
-        { contact: { [Op.iLike]: `%${query.search}%` } },
-        { email: { [Op.iLike]: `%${query.search}%` } },
+        { nom: { [Op.iLike]: `%${s}%` } },
+        { contact: { [Op.iLike]: `%${s}%` } },
         literal(
           `EXISTS (SELECT 1 FROM vehicles WHERE vehicles."clientId" = "Client"."id" AND (` +
           `vehicles.brand ILIKE '%${s}%' OR vehicles.modele ILIKE '%${s}%' OR ` +
-          `vehicles.type ILIKE '%${s}%' OR vehicles.immatriculation ILIKE '%${s}%'))`,
+          `vehicles.type ILIKE '%${s}%' OR REPLACE(vehicles.immatriculation, ' ', '') ILIKE '%${sNoSpaces}%'))`,
         ),
       ];
     }
@@ -132,17 +132,17 @@ export class ClientsService {
   }
 
   async create(createClientDto: CreateClientDto) {
-    await this.checkClientUniqueness(createClientDto.contact, createClientDto.email);
+    await this.checkClientUniqueness(createClientDto.contact);
     return this.clientModel.create(createClientDto as any);
   }
 
   async update(id: number, updateClientDto: UpdateClientDto) {
     const client = await this.findOne(id);
-    await this.checkClientUniqueness(updateClientDto.contact, updateClientDto.email, id);
+    await this.checkClientUniqueness(updateClientDto.contact, id);
     return client.update(updateClientDto);
   }
 
-  private async checkClientUniqueness(contact?: string, email?: string, excludeId?: number) {
+  private async checkClientUniqueness(contact?: string, excludeId?: number) {
     if (contact) {
       const byContact = await this.clientModel.findOne({
         where: {
@@ -152,18 +152,6 @@ export class ClientsService {
       });
       if (byContact) {
         throw new ConflictException(`Un client avec le numéro ${contact} existe déjà`);
-      }
-    }
-
-    if (email) {
-      const byEmail = await this.clientModel.findOne({
-        where: {
-          email,
-          ...(excludeId ? { id: { [Op.ne]: excludeId } } : {}),
-        },
-      });
-      if (byEmail) {
-        throw new ConflictException(`Un client avec l'email ${email} existe déjà`);
       }
     }
   }

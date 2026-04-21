@@ -7,6 +7,7 @@ import type {
     AddServicesToCouponDto,
     CouponFilters
 } from './types';
+import { FICHES_PISTE_KEYS } from '@/api/fiches-piste/queries';
 
 export const COUPONS_KEYS = {
     all: ['coupons'] as const,
@@ -62,6 +63,7 @@ export const useUpdateCouponStatus = () => {
             queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.lists() });
             queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.detail(variables.id) });
             queryClient.invalidateQueries({ queryKey: COUPONS_KEYS.myAssigned() });
+            queryClient.invalidateQueries({ queryKey: FICHES_PISTE_KEYS.lists() });
         },
     });
 };
